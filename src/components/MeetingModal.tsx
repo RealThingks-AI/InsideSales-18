@@ -323,6 +323,8 @@ export const MeetingModal = ({
   const [timezone, setTimezone] = useState(getBrowserTimezone);
   const [tzPopoverOpen, setTzPopoverOpen] = useState(false);
   const tzListRef = useRef<HTMLDivElement | null>(null);
+  const [datePopoverOpen, setDatePopoverOpen] = useState(false);
+  const [timePopoverOpen, setTimePopoverOpen] = useState(false);
   const [startDate, setStartDate] = useState<Date | undefined>(undefined);
   const [startTime, setStartTime] = useState("09:00");
   const [duration, setDuration] = useState("60");
@@ -775,7 +777,7 @@ export const MeetingModal = ({
 
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Date *</Label>
-              <Popover>
+              <Popover open={datePopoverOpen} onOpenChange={setDatePopoverOpen}>
                 <PopoverTrigger asChild>
                   <Button variant="outline" className={cn("w-full h-8 justify-start text-left font-normal text-xs", !startDate && "text-muted-foreground")}>
                     <CalendarIcon className="mr-1.5 h-3.5 w-3.5" />
@@ -783,14 +785,14 @@ export const MeetingModal = ({
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0 z-50" align="start">
-                  <Calendar mode="single" selected={startDate} onSelect={setStartDate} disabled={date => date < todayInTimezone} initialFocus className="pointer-events-auto" />
+                  <Calendar mode="single" selected={startDate} onSelect={(date) => { setStartDate(date); setDatePopoverOpen(false); }} disabled={date => date < todayInTimezone} initialFocus className="pointer-events-auto" />
                 </PopoverContent>
               </Popover>
             </div>
 
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Time *</Label>
-              <Popover>
+              <Popover open={timePopoverOpen} onOpenChange={setTimePopoverOpen}>
                 <PopoverTrigger asChild>
                   <Button variant="outline" className="w-full h-8 justify-start text-left font-normal text-xs">
                     <Clock className="mr-1.5 h-3.5 w-3.5" />
@@ -798,7 +800,7 @@ export const MeetingModal = ({
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-28 p-1 z-50 max-h-48 overflow-y-auto" align="start">
-                  {availableStartTimeSlots.length > 0 ? availableStartTimeSlots.map(slot => <Button key={slot} variant={startTime === slot ? "secondary" : "ghost"} className="w-full justify-start text-xs h-7" onClick={() => setStartTime(slot)}>
+                  {availableStartTimeSlots.length > 0 ? availableStartTimeSlots.map(slot => <Button key={slot} variant={startTime === slot ? "secondary" : "ghost"} className="w-full justify-start text-xs h-7" onClick={() => { setStartTime(slot); setTimePopoverOpen(false); }}>
                         {formatDisplayTime(slot)}
                       </Button>) : <p className="text-xs text-muted-foreground p-2">No times available</p>}
                 </PopoverContent>
