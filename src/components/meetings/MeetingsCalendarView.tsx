@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { getMeetingStatus } from "@/utils/meetingStatus";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -119,11 +120,17 @@ export const MeetingsCalendarView = ({ meetings, onMeetingClick, onMeetingUpdate
   };
 
   const getMeetingColor = (meeting: Meeting) => {
-    if (meeting.status === 'cancelled') return 'bg-destructive/30 border-destructive text-destructive dark:bg-destructive/40 dark:text-destructive-foreground';
-    const now = new Date();
-    const meetingStart = new Date(meeting.start_time);
-    if (meetingStart < now) return 'bg-muted border-muted-foreground/30 text-foreground dark:text-foreground';
-    return 'bg-primary border-primary text-primary-foreground';
+    const status = getMeetingStatus(meeting);
+    if (status === "cancelled") {
+      return "bg-destructive/30 border-destructive text-destructive dark:bg-destructive/40 dark:text-destructive-foreground";
+    }
+    if (status === "completed") {
+      return "bg-muted border-muted-foreground/30 text-foreground dark:text-foreground";
+    }
+    if (status === "ongoing") {
+      return "bg-secondary border-secondary text-secondary-foreground";
+    }
+    return "bg-primary border-primary text-primary-foreground";
   };
 
   const workHours = Array.from({ length: WORK_END_HOUR - WORK_START_HOUR }, (_, i) => i + WORK_START_HOUR);
@@ -160,10 +167,11 @@ export const MeetingsCalendarView = ({ meetings, onMeetingClick, onMeetingUpdate
     if (!draggedMeeting) return;
 
     // Prevent rescheduling cancelled or completed meetings
-    if (draggedMeeting.status === 'cancelled' || draggedMeeting.status === 'completed') {
+    const draggedStatus = getMeetingStatus(draggedMeeting);
+    if (draggedStatus === "cancelled" || draggedStatus === "completed") {
       toast({
         title: "Cannot reschedule",
-        description: `This meeting is ${draggedMeeting.status} and cannot be rescheduled.`,
+        description: `This meeting is ${draggedStatus} and cannot be rescheduled.`,
         variant: "destructive",
       });
       handleDragEnd();
@@ -214,6 +222,19 @@ export const MeetingsCalendarView = ({ meetings, onMeetingClick, onMeetingUpdate
 
     setIsRescheduling(true);
     try {
+      if (pendingReschedule.meeting.join_url) {
+        const { error: teamsError } = await supabase.functions.invoke("update-teams-meeting", {
+          body: {
+            meetingId: pendingReschedule.meeting.id,
+            joinUrl: pendingReschedule.meeting.join_url,
+            startTime: pendingReschedule.newStart.toISOString(),
+            endTime: pendingReschedule.newEnd.toISOString(),
+            timezone: "UTC",
+          },
+        });
+        if (teamsError) throw teamsError;
+      }
+
       const { error } = await supabase
         .from('meetings')
         .update({

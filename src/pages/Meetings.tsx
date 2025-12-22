@@ -14,6 +14,7 @@ import { MeetingModal } from "@/components/MeetingModal";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
+import { getMeetingStatus } from "@/utils/meetingStatus";
 type SortColumn = 'subject' | 'date' | 'time' | 'lead_contact' | 'status' | null;
 type SortDirection = 'asc' | 'desc';
 interface Meeting {
@@ -90,11 +91,8 @@ const Meetings = () => {
   useEffect(() => {
     fetchMeetings();
   }, []);
-  const getMeetingStatus = (meeting: Meeting): string => {
-    if (meeting.status === 'cancelled') return 'cancelled';
-    const now = new Date();
-    const meetingStart = new Date(meeting.start_time);
-    return meetingStart < now ? 'completed' : 'scheduled';
+  const getEffectiveStatus = (meeting: Meeting) => {
+    return getMeetingStatus(meeting);
   };
   const handleSort = (column: SortColumn) => {
     if (sortColumn === column) {
@@ -114,7 +112,7 @@ const Meetings = () => {
     let filtered = meetings.filter(meeting => {
       const matchesSearch = meeting.subject?.toLowerCase().includes(searchTerm.toLowerCase()) || meeting.lead_name?.toLowerCase().includes(searchTerm.toLowerCase()) || meeting.contact_name?.toLowerCase().includes(searchTerm.toLowerCase());
       if (statusFilter === "all") return matchesSearch;
-      const meetingStatus = getMeetingStatus(meeting);
+      const meetingStatus = getEffectiveStatus(meeting);
       return matchesSearch && meetingStatus === statusFilter;
     });
     if (sortColumn) {
@@ -141,8 +139,8 @@ const Meetings = () => {
             bValue = (b.lead_name || b.contact_name || '').toLowerCase();
             break;
           case 'status':
-            aValue = getMeetingStatus(a);
-            bValue = getMeetingStatus(b);
+            aValue = getEffectiveStatus(a);
+            bValue = getEffectiveStatus(b);
             break;
         }
         if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
@@ -212,14 +210,16 @@ const Meetings = () => {
   };
   const isAllSelected = filteredMeetings.length > 0 && selectedMeetings.length === filteredMeetings.length;
   const isSomeSelected = selectedMeetings.length > 0 && selectedMeetings.length < filteredMeetings.length;
-  const getStatusBadge = (status: string, startTime: string) => {
-    const now = new Date();
-    const meetingStart = new Date(startTime);
-    if (status === 'cancelled') {
+  const getStatusBadge = (meeting: Meeting) => {
+    const status = getEffectiveStatus(meeting);
+    if (status === "cancelled") {
       return <Badge variant="destructive">Cancelled</Badge>;
     }
-    if (meetingStart < now) {
-      return <Badge variant="secondary">Completed</Badge>;
+    if (status === "ongoing") {
+      return <Badge variant="secondary">Ongoing</Badge>;
+    }
+    if (status === "completed") {
+      return <Badge variant="outline">Completed</Badge>;
     }
     return <Badge variant="default">Scheduled</Badge>;
   };
@@ -318,6 +318,7 @@ const Meetings = () => {
                 <SelectContent>
                   <SelectItem value="all">All Status</SelectItem>
                   <SelectItem value="scheduled">Scheduled</SelectItem>
+                  <SelectItem value="ongoing">Ongoing</SelectItem>
                   <SelectItem value="completed">Completed</SelectItem>
                   <SelectItem value="cancelled">Cancelled</SelectItem>
                 </SelectContent>
@@ -399,7 +400,7 @@ const Meetings = () => {
                           {meeting.contact_name && <div>Contact: {meeting.contact_name}</div>}
                           {!meeting.lead_name && !meeting.contact_name && <span className="text-muted-foreground">—</span>}
                         </TableCell>
-                        <TableCell>{getStatusBadge(meeting.status, meeting.start_time)}</TableCell>
+                        <TableCell>{getStatusBadge(meeting)}</TableCell>
                         <TableCell>{getOutcomeBadge(meeting.outcome || null)}</TableCell>
                         <TableCell>
                           {meeting.join_url ? <a href={meeting.join_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline flex items-center gap-1">
