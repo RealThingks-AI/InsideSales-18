@@ -1,0 +1,483 @@
+import { useState, useEffect } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
+import { useCRUDAudit } from "@/hooks/useCRUDAudit";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { X, ChevronDown } from "lucide-react";
+import { Account } from "./AccountTable";
+
+const accountSchema = z.object({
+  company_name: z.string().min(1, "Company name is required"),
+  email: z.string().email("Invalid email address").optional().or(z.literal("")),
+  region: z.string().optional(),
+  country: z.string().optional(),
+  website: z.string().url("Invalid website URL").optional().or(z.literal("")),
+  company_type: z.string().optional(),
+  status: z.string().optional(),
+  notes: z.string().optional(),
+  industry: z.string().optional(),
+  phone: z.string().optional(),
+});
+
+type AccountFormData = z.infer<typeof accountSchema>;
+
+interface AccountModalProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  account?: Account | null;
+  onSuccess: () => void;
+}
+
+const regions = ["EU", "US", "ASIA", "LATAM", "MEA", "Other"];
+
+const regionCountries: Record<string, string[]> = {
+  EU: ["Germany", "France", "UK", "Italy", "Spain", "Netherlands", "Sweden", "Poland", "Belgium", "Austria", "Switzerland", "Other EU"],
+  US: ["United States", "Canada", "Mexico"],
+  ASIA: ["Japan", "China", "India", "South Korea", "Singapore", "Taiwan", "Thailand", "Vietnam", "Malaysia", "Indonesia", "Other Asia"],
+  LATAM: ["Brazil", "Argentina", "Chile", "Colombia", "Peru", "Other LATAM"],
+  MEA: ["UAE", "Saudi Arabia", "South Africa", "Israel", "Turkey", "Egypt", "Other MEA"],
+  Other: ["Other"]
+};
+
+const statuses = ["New", "Working", "Warm", "Hot", "Nurture", "Closed-Won", "Closed-Lost"];
+
+const tagOptions = [
+  "AUTOSAR", "Adaptive AUTOSAR", "Embedded Systems", "BSW", "ECU", "Zone Controller",
+  "HCP", "CI/CD", "V&V Testing", "Integration", "Software Architecture", "LINUX",
+  "QNX", "Cybersecurity", "FuSa", "OTA", "Diagnostics", "Vehicle Network",
+  "Vehicle Architecture", "Connected Car", "Platform", "µC/HW"
+];
+
+const industries = ["Automotive", "Technology", "Manufacturing", "Other"];
+
+export const AccountModal = ({ open, onOpenChange, account, onSuccess }: AccountModalProps) => {
+  const { toast } = useToast();
+  const { logCreate, logUpdate } = useCRUDAudit();
+  const [loading, setLoading] = useState(false);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [availableCountries, setAvailableCountries] = useState<string[]>([]);
+
+  const form = useForm<AccountFormData>({
+    resolver: zodResolver(accountSchema),
+    defaultValues: {
+      company_name: "",
+      email: "",
+      region: "",
+      country: "",
+      website: "",
+      company_type: "",
+      status: "New",
+      notes: "",
+      industry: "",
+      phone: "",
+    },
+  });
+
+  const watchedRegion = form.watch("region");
+
+  useEffect(() => {
+    if (watchedRegion && regionCountries[watchedRegion]) {
+      setAvailableCountries(regionCountries[watchedRegion]);
+    } else {
+      setAvailableCountries([]);
+    }
+  }, [watchedRegion]);
+
+  useEffect(() => {
+    if (account) {
+      form.reset({
+        company_name: account.company_name || "",
+        email: account.email || "",
+        region: account.region || "",
+        country: account.country || "",
+        website: account.website || "",
+        company_type: account.company_type || "",
+        status: account.status || "New",
+        notes: account.notes || "",
+        industry: account.industry || "",
+        phone: account.phone || "",
+      });
+      setSelectedTags(account.tags || []);
+      if (account.region && regionCountries[account.region]) {
+        setAvailableCountries(regionCountries[account.region]);
+      }
+    } else {
+      form.reset({
+        company_name: "",
+        email: "",
+        region: "",
+        country: "",
+        website: "",
+        company_type: "",
+        status: "New",
+        notes: "",
+        industry: "",
+        phone: "",
+      });
+      setSelectedTags([]);
+    }
+  }, [account, form]);
+
+  const toggleTag = (tag: string) => {
+    setSelectedTags(prev => 
+      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
+    );
+  };
+
+  const onSubmit = async (data: AccountFormData) => {
+    try {
+      setLoading(true);
+      const user = await supabase.auth.getUser();
+      
+      if (!user.data.user) {
+        toast({
+          title: "Error",
+          description: "You must be logged in to perform this action",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const accountData = {
+        company_name: data.company_name,
+        email: data.email || null,
+        region: data.region || null,
+        country: data.country || null,
+        website: data.website || null,
+        company_type: data.company_type || null,
+        tags: selectedTags.length > 0 ? selectedTags : null,
+        status: data.status || 'New',
+        notes: data.notes || null,
+        industry: data.industry || null,
+        phone: data.phone || null,
+        account_owner: user.data.user.id,
+        modified_by: user.data.user.id,
+      };
+
+      if (account) {
+        const { error } = await supabase
+          .from('accounts')
+          .update({
+            ...accountData,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', account.id);
+
+        if (error) throw error;
+
+        await logUpdate('accounts', account.id, accountData, account);
+
+        toast({
+          title: "Success",
+          description: "Account updated successfully",
+        });
+      } else {
+        const { data: newAccount, error } = await supabase
+          .from('accounts')
+          .insert({
+            ...accountData,
+            created_by: user.data.user.id,
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        await logCreate('accounts', newAccount.id, accountData);
+
+        toast({
+          title: "Success",
+          description: "Account created successfully",
+        });
+      }
+
+      onSuccess();
+      onOpenChange(false);
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: account ? "Failed to update account" : "Failed to create account",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>
+            {account ? "Edit Account" : "Add New Account"}
+          </DialogTitle>
+        </DialogHeader>
+
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="company_name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Company Name *</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Company Name" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Email</FormLabel>
+                    <FormControl>
+                      <Input type="email" placeholder="contact@company.com" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="industry"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Industry</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select industry" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {industries.map((industry) => (
+                          <SelectItem key={industry} value={industry}>
+                            {industry}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="region"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Region</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select region" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {regions.map((region) => (
+                          <SelectItem key={region} value={region}>
+                            {region}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="country"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Country</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value} disabled={!watchedRegion}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder={watchedRegion ? "Select country" : "Select region first"} />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {availableCountries.map((country) => (
+                          <SelectItem key={country} value={country}>
+                            {country}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="website"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Website</FormLabel>
+                    <FormControl>
+                      <Input placeholder="https://example.com" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="phone"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Phone</FormLabel>
+                    <FormControl>
+                      <Input placeholder="+1 234 567 8900" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="company_type"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Company Type</FormLabel>
+                    <FormControl>
+                      <Input placeholder="e.g., OEM, Tier-1, Startup" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="status"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Status</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select status" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {statuses.map((status) => (
+                          <SelectItem key={status} value={status}>
+                            {status}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            {/* Tags Multi-select */}
+            <div className="space-y-2">
+              <FormLabel>Tags</FormLabel>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    className="w-full justify-between h-auto min-h-10 py-2"
+                  >
+                    <div className="flex items-center gap-1 flex-1 min-w-0">
+                      {selectedTags.length > 0 ? (
+                        <div className="flex gap-1 flex-wrap flex-1">
+                          {selectedTags.map((tag) => (
+                            <Badge key={tag} variant="secondary" className="text-xs">
+                              {tag}
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">Select tags...</span>
+                      )}
+                    </div>
+                    <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[400px] p-0 bg-popover z-50" align="start">
+                  <div className="p-3 max-h-[300px] overflow-y-auto">
+                    <div className="flex flex-wrap gap-2">
+                      {tagOptions.map((tag) => (
+                        <Badge
+                          key={tag}
+                          variant={selectedTags.includes(tag) ? "default" : "outline"}
+                          className="cursor-pointer hover:opacity-80 transition-opacity"
+                          onClick={() => toggleTag(tag)}
+                        >
+                          {tag}
+                          {selectedTags.includes(tag) && (
+                            <X className="w-3 h-3 ml-1" />
+                          )}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            <FormField
+              control={form.control}
+              name="notes"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Notes</FormLabel>
+                  <FormControl>
+                    <Textarea 
+                      placeholder="Additional notes about the account..."
+                      className="min-h-24"
+                      {...field} 
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <div className="flex justify-end gap-2 pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={loading}>
+                {loading ? "Saving..." : account ? "Save Changes" : "Add Account"}
+              </Button>
+            </div>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  );
+};

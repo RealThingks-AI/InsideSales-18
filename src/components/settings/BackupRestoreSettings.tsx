@@ -1,0 +1,542 @@
+import { useState, useEffect, useCallback } from 'react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import { useUserRole } from "@/hooks/useUserRole";
+import { useAuth } from "@/hooks/useAuth";
+import { 
+  Database, 
+  Download, 
+  Upload, 
+  Trash2, 
+  RefreshCw, 
+  ShieldAlert,
+  Clock,
+  User,
+  HardDrive,
+  FileJson
+} from "lucide-react";
+import { format } from "date-fns";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Input } from "@/components/ui/input";
+
+interface Backup {
+  id: string;
+  file_name: string;
+  file_path: string;
+  size_bytes: number;
+  tables_count: number;
+  records_count: number;
+  backup_type: string;
+  status: string;
+  manifest: any;
+  created_at: string;
+  created_by: string;
+}
+
+const BackupRestoreSettings = () => {
+  const [backups, setBackups] = useState<Backup[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [restoring, setRestoring] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [showRestoreDialog, setShowRestoreDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [selectedBackup, setSelectedBackup] = useState<Backup | null>(null);
+  const [confirmText, setConfirmText] = useState('');
+  const [scheduledBackup, setScheduledBackup] = useState(false);
+  const [userNames, setUserNames] = useState<Record<string, string>>({});
+  const { toast } = useToast();
+  const { isAdmin, loading: roleLoading } = useUserRole();
+  const { user } = useAuth();
+
+  const fetchBackups = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('backups')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      if (error) throw error;
+      setBackups(data || []);
+
+      // Fetch user names for creators
+      const userIds = [...new Set((data || []).map(b => b.created_by).filter(Boolean))];
+      if (userIds.length > 0) {
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, full_name')
+          .in('id', userIds);
+        
+        if (profiles) {
+          const names: Record<string, string> = {};
+          profiles.forEach(p => {
+            names[p.id] = p.full_name || 'Unknown';
+          });
+          setUserNames(names);
+        }
+      }
+    } catch (error: any) {
+      console.error('Error fetching backups:', error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch backups",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [toast]);
+
+  useEffect(() => {
+    if (!roleLoading && isAdmin) {
+      fetchBackups();
+    } else if (!roleLoading) {
+      setLoading(false);
+    }
+  }, [fetchBackups, isAdmin, roleLoading]);
+
+  const handleCreateBackup = async () => {
+    if (!isAdmin) {
+      toast({
+        title: "Access Denied",
+        description: "Only admins can create backups",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setCreating(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('create-backup', {
+        method: 'POST',
+        body: { includeAuditLogs: true }
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "Backup created successfully",
+      });
+      
+      await fetchBackups();
+    } catch (error: any) {
+      console.error('Error creating backup:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create backup",
+        variant: "destructive",
+      });
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleDownloadBackup = async (backup: Backup) => {
+    try {
+      const { data, error } = await supabase.storage
+        .from('backups')
+        .download(backup.file_path);
+
+      if (error) throw error;
+
+      const url = URL.createObjectURL(data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = backup.file_name;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      toast({
+        title: "Success",
+        description: "Backup download started",
+      });
+    } catch (error: any) {
+      console.error('Error downloading backup:', error);
+      toast({
+        title: "Error",
+        description: "Failed to download backup",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleRestoreClick = (backup: Backup) => {
+    setSelectedBackup(backup);
+    setConfirmText('');
+    setShowRestoreDialog(true);
+  };
+
+  const handleRestoreConfirm = async () => {
+    if (!selectedBackup || confirmText !== 'CONFIRM') return;
+
+    setRestoring(selectedBackup.id);
+    setShowRestoreDialog(false);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('restore-backup', {
+        method: 'POST',
+        body: { backupId: selectedBackup.id }
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Restore Started",
+        description: "The restore process has been initiated. This may take a few minutes.",
+      });
+    } catch (error: any) {
+      console.error('Error restoring backup:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to restore backup",
+        variant: "destructive",
+      });
+    } finally {
+      setRestoring(null);
+      setSelectedBackup(null);
+    }
+  };
+
+  const handleDeleteClick = (backup: Backup) => {
+    setSelectedBackup(backup);
+    setShowDeleteDialog(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!selectedBackup) return;
+
+    setDeleting(selectedBackup.id);
+    setShowDeleteDialog(false);
+
+    try {
+      // Delete from storage
+      const { error: storageError } = await supabase.storage
+        .from('backups')
+        .remove([selectedBackup.file_path]);
+
+      if (storageError) throw storageError;
+
+      // Delete metadata
+      const { error: dbError } = await supabase
+        .from('backups')
+        .delete()
+        .eq('id', selectedBackup.id);
+
+      if (dbError) throw dbError;
+
+      toast({
+        title: "Success",
+        description: "Backup deleted successfully",
+      });
+
+      await fetchBackups();
+    } catch (error: any) {
+      console.error('Error deleting backup:', error);
+      toast({
+        title: "Error",
+        description: "Failed to delete backup",
+        variant: "destructive",
+      });
+    } finally {
+      setDeleting(null);
+      setSelectedBackup(null);
+    }
+  };
+
+  const formatBytes = (bytes: number) => {
+    if (!bytes) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  if (roleLoading || loading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Database className="h-5 w-5" />
+            Backup & Restore
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-center h-32">
+            <RefreshCw className="h-6 w-6 animate-spin" />
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!isAdmin) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Database className="h-5 w-5" />
+            Backup & Restore
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col items-center justify-center h-32 text-center">
+            <ShieldAlert className="h-12 w-12 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-semibold">Access Denied</h3>
+            <p className="text-muted-foreground">Only administrators can manage backups.</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <>
+      <div className="space-y-6">
+        {/* Export/Import Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Database className="h-5 w-5" />
+                Export Data
+              </CardTitle>
+              <CardDescription>
+                Create a complete backup and save to secure storage
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button 
+                className="w-full" 
+                onClick={handleCreateBackup}
+                disabled={creating}
+              >
+                {creating ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                    Creating Backup...
+                  </>
+                ) : (
+                  <>
+                    <Download className="h-4 w-4 mr-2" />
+                    Export All Data
+                  </>
+                )}
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Upload className="h-5 w-5" />
+                Import Data
+              </CardTitle>
+              <CardDescription>
+                Completely replace database from a backup file
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button variant="outline" className="w-full" disabled>
+                <Upload className="h-4 w-4 mr-2" />
+                Import Backup File
+              </Button>
+              <p className="text-xs text-muted-foreground mt-2 text-center">
+                Use restore from backup history below
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Scheduled Backup Toggle */}
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label htmlFor="scheduled-backup" className="text-base">Scheduled Backups</Label>
+                <p className="text-sm text-muted-foreground">
+                  Automatically create daily backups at midnight
+                </p>
+              </div>
+              <Switch
+                id="scheduled-backup"
+                checked={scheduledBackup}
+                onCheckedChange={setScheduledBackup}
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Backup History */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Clock className="h-5 w-5" />
+              Backup History
+            </CardTitle>
+            <CardDescription>
+              Recent backups with download and restore options (last 10)
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {backups.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <Database className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p>No backups found</p>
+                <p className="text-sm">Create your first backup to get started</p>
+              </div>
+            ) : (
+              backups.map((backup) => (
+                <div 
+                  key={backup.id} 
+                  className="flex items-center justify-between p-4 border rounded-lg bg-card hover:bg-muted/50 transition-colors"
+                >
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <FileJson className="h-4 w-4 text-muted-foreground" />
+                      <span className="font-medium">{backup.file_name}</span>
+                    </div>
+                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        {format(new Date(backup.created_at), 'dd/MM/yyyy, HH:mm:ss')}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <User className="h-3 w-3" />
+                        {backup.backup_type === 'manual' ? 'Manual' : 'Auto'}
+                      </span>
+                      <span>
+                        {backup.tables_count} tables • {backup.records_count?.toLocaleString()} records
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <HardDrive className="h-3 w-3" />
+                        {formatBytes(backup.size_bytes)}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => handleDownloadBackup(backup)}
+                    >
+                      <Download className="h-4 w-4 mr-1" />
+                      Download
+                    </Button>
+                    <Button 
+                      variant="secondary" 
+                      size="sm"
+                      onClick={() => handleRestoreClick(backup)}
+                      disabled={restoring === backup.id}
+                    >
+                      {restoring === backup.id ? (
+                        <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
+                      ) : (
+                        <Database className="h-4 w-4 mr-1" />
+                      )}
+                      Restore
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="sm"
+                      onClick={() => handleDeleteClick(backup)}
+                      disabled={deleting === backup.id}
+                      className="text-destructive hover:text-destructive"
+                    >
+                      {deleting === backup.id ? (
+                        <RefreshCw className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Restore Confirmation Dialog */}
+      <AlertDialog open={showRestoreDialog} onOpenChange={setShowRestoreDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-destructive">⚠️ Confirm Restore</AlertDialogTitle>
+            <AlertDialogDescription className="space-y-4">
+              <p>You are about to restore the database from backup:</p>
+              <p className="font-mono text-sm bg-muted p-2 rounded">{selectedBackup?.file_name}</p>
+              <div className="bg-destructive/10 border border-destructive/20 rounded p-3 text-sm">
+                <p className="font-semibold text-destructive">This action will:</p>
+                <ul className="list-disc list-inside mt-2 space-y-1">
+                  <li>Overwrite all current database tables</li>
+                  <li>Replace all storage files</li>
+                  <li>May cause brief downtime</li>
+                  <li>Cannot be undone</li>
+                </ul>
+              </div>
+              <div className="space-y-2">
+                <Label>Type "CONFIRM" to proceed:</Label>
+                <Input 
+                  value={confirmText}
+                  onChange={(e) => setConfirmText(e.target.value)}
+                  placeholder="CONFIRM"
+                />
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleRestoreConfirm}
+              disabled={confirmText !== 'CONFIRM'}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Restore Backup
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Backup</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this backup? This action cannot be undone.
+              <p className="font-mono text-sm bg-muted p-2 rounded mt-2">{selectedBackup?.file_name}</p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleDeleteConfirm}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+};
+
+export default BackupRestoreSettings;
