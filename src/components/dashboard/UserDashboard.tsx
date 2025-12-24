@@ -11,12 +11,25 @@ import { DashboardCustomizeModal, WidgetKey, WidgetSize, WidgetSizeConfig, DEFAU
 import { toast } from "sonner";
 import { format, isAfter, isBefore, addDays } from "date-fns";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { TaskModal } from "@/components/tasks/TaskModal";
+import { MeetingModal } from "@/components/MeetingModal";
+import { useTasks } from "@/hooks/useTasks";
+import { Task } from "@/types/task";
 
 const UserDashboard = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [customizeOpen, setCustomizeOpen] = useState(false);
+  
+  // Modal states for viewing records
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [taskModalOpen, setTaskModalOpen] = useState(false);
+  const [selectedMeeting, setSelectedMeeting] = useState<any>(null);
+  const [meetingModalOpen, setMeetingModalOpen] = useState(false);
+  
+  // Task operations
+  const { createTask, updateTask, fetchTasks } = useTasks();
   
   // Fetch display name directly from profiles table
   const { data: userName } = useQuery({
@@ -403,7 +416,7 @@ const UserDashboard = () => {
                     <div 
                       key={meeting.id} 
                       className="flex items-center justify-between p-2 rounded-lg bg-muted/50 cursor-pointer hover:bg-muted/80 transition-colors"
-                      onClick={() => navigate('/meetings')}
+                      onClick={() => { setSelectedMeeting(meeting); setMeetingModalOpen(true); }}
                     >
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium truncate">{meeting.subject}</p>
@@ -463,7 +476,7 @@ const UserDashboard = () => {
                               ? 'bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800'
                               : 'bg-muted/50'
                         }`}
-                        onClick={() => navigate('/tasks')}
+                        onClick={() => { setSelectedTask(task as Task); setTaskModalOpen(true); }}
                         title="Click to view task details"
                       >
                         <div className="min-w-0 flex-1">
@@ -725,6 +738,39 @@ const UserDashboard = () => {
         widgetSizes={widgetSizes}
         onSave={(widgets, order, sizes) => savePreferencesMutation.mutate({ widgets, order, sizes })}
         isSaving={savePreferencesMutation.isPending}
+      />
+      
+      {/* Task Modal for viewing/editing tasks */}
+      <TaskModal
+        open={taskModalOpen}
+        onOpenChange={(open) => {
+          setTaskModalOpen(open);
+          if (!open) setSelectedTask(null);
+        }}
+        task={selectedTask}
+        onSubmit={createTask}
+        onUpdate={async (taskId, updates, original) => {
+          const result = await updateTask(taskId, updates, original);
+          if (result) {
+            queryClient.invalidateQueries({ queryKey: ['dashboard-task-reminders'] });
+          }
+          return result;
+        }}
+      />
+      
+      {/* Meeting Modal for viewing/editing meetings */}
+      <MeetingModal
+        open={meetingModalOpen}
+        onOpenChange={(open) => {
+          setMeetingModalOpen(open);
+          if (!open) setSelectedMeeting(null);
+        }}
+        meeting={selectedMeeting}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ['dashboard-upcoming-meetings'] });
+          setMeetingModalOpen(false);
+          setSelectedMeeting(null);
+        }}
       />
     </div>
   );
