@@ -5,11 +5,12 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Users, FileText, Briefcase, TrendingUp, Clock, CheckCircle2, ArrowRight, Plus, Settings2, Calendar, Activity, Bell, AlertCircle } from "lucide-react";
+import { Users, FileText, Briefcase, TrendingUp, Clock, CheckCircle2, ArrowRight, Plus, Settings2, Calendar, Activity, Bell, AlertCircle, Info, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { DashboardCustomizeModal, WidgetKey, WidgetSize, WidgetSizeConfig, DEFAULT_WIDGETS } from "./DashboardCustomizeModal";
 import { toast } from "sonner";
 import { format, isAfter, isBefore, addDays } from "date-fns";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 const UserDashboard = () => {
   const { user } = useAuth();
@@ -367,23 +368,19 @@ const UserDashboard = () => {
         );
       case "actionItems":
         return (
-          <Card className="h-full hover:shadow-lg transition-shadow animate-fade-in">
+          <Card className="h-full hover:shadow-lg transition-shadow cursor-pointer animate-fade-in" onClick={() => navigate('/tasks')}>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Action Items</CardTitle>
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                Action Items
+                <span className="text-xs font-normal text-muted-foreground">(click to view)</span>
+              </CardTitle>
               <Clock className="w-4 h-4 text-orange-600" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{actionItemsData?.total || 0}</div>
-              <p className="text-xs text-muted-foreground">{actionItemsData?.overdue || 0} overdue</p>
-              <Button 
-                variant="link" 
-                size="sm" 
-                className="mt-2 p-0 h-auto text-xs text-primary"
-                onClick={() => navigate('/tasks')}
-              >
-                <Plus className="w-3 h-3 mr-1" />
-                Create Task
-              </Button>
+              <p className={`text-xs ${(actionItemsData?.overdue || 0) > 0 ? 'text-destructive font-medium' : 'text-muted-foreground'}`}>
+                {(actionItemsData?.overdue || 0) > 0 ? `⚠️ ${actionItemsData?.overdue} overdue` : 'No overdue items'}
+              </p>
             </CardContent>
           </Card>
         );
@@ -403,15 +400,19 @@ const UserDashboard = () => {
               {upcomingMeetings && upcomingMeetings.length > 0 ? (
                 <div className="space-y-3">
                   {upcomingMeetings.map((meeting) => (
-                    <div key={meeting.id} className="flex items-center justify-between p-2 rounded-lg bg-muted/50">
+                    <div 
+                      key={meeting.id} 
+                      className="flex items-center justify-between p-2 rounded-lg bg-muted/50 cursor-pointer hover:bg-muted/80 transition-colors"
+                      onClick={() => navigate('/meetings')}
+                    >
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium truncate">{meeting.subject}</p>
                         <p className="text-xs text-muted-foreground">
                           {format(new Date(meeting.start_time), 'dd/MM/yyyy HH:mm')}
                         </p>
                       </div>
-                      <span className={`text-xs px-2 py-1 rounded-full ${
-                        meeting.status === 'scheduled' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-gray-100 text-gray-700'
+                      <span className={`text-xs px-2 py-1 rounded-full flex-shrink-0 ${
+                        meeting.status === 'scheduled' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
                       }`}>
                         {meeting.status}
                       </span>
@@ -419,7 +420,13 @@ const UserDashboard = () => {
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground text-center py-4">No upcoming meetings</p>
+                <div className="flex flex-col items-center justify-center py-6 text-center">
+                  <Calendar className="w-8 h-8 text-muted-foreground/50 mb-2" />
+                  <p className="text-sm text-muted-foreground">No upcoming meetings scheduled</p>
+                  <Button variant="link" size="sm" className="mt-1" onClick={() => navigate('/meetings')}>
+                    Schedule a meeting
+                  </Button>
+                </div>
               )}
             </CardContent>
           </Card>
@@ -449,13 +456,15 @@ const UserDashboard = () => {
                     return (
                       <div 
                         key={task.id} 
-                        className={`flex items-center justify-between p-2 rounded-lg ${
+                        className={`flex items-center justify-between p-2 rounded-lg cursor-pointer hover:ring-2 hover:ring-primary/20 transition-all ${
                           isOverdue 
                             ? 'bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700' 
                             : isDueToday 
                               ? 'bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800'
                               : 'bg-muted/50'
                         }`}
+                        onClick={() => navigate('/tasks')}
+                        title="Click to view task details"
                       >
                         <div className="min-w-0 flex-1">
                           <p className={`text-sm font-medium truncate ${isOverdue ? 'text-red-800 dark:text-red-200' : ''}`}>
@@ -467,7 +476,7 @@ const UserDashboard = () => {
                             Due: {task.due_date ? format(new Date(task.due_date), 'dd/MM/yyyy') : 'No date'}
                           </p>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-shrink-0">
                           {isOverdue && (
                             <span className="text-xs px-2 py-1 rounded-full bg-red-500 text-white font-semibold">
                               OVERDUE
@@ -486,7 +495,13 @@ const UserDashboard = () => {
                   })}
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground text-center py-4">No pending tasks</p>
+                <div className="flex flex-col items-center justify-center py-6 text-center">
+                  <Bell className="w-8 h-8 text-muted-foreground/50 mb-2" />
+                  <p className="text-sm text-muted-foreground">No pending tasks</p>
+                  <Button variant="link" size="sm" className="mt-1" onClick={() => navigate('/tasks')}>
+                    Create a task
+                  </Button>
+                </div>
               )}
             </CardContent>
           </Card>
@@ -499,26 +514,30 @@ const UserDashboard = () => {
                 <Activity className="w-5 h-5 text-primary" />
                 Recent Activities
               </CardTitle>
-              <Button variant="ghost" size="sm" onClick={() => navigate('/settings?tab=audit')}>
+              <Button variant="ghost" size="sm" onClick={() => navigate('/notifications')}>
                 View All
               </Button>
             </CardHeader>
-            <CardContent>
+            <CardContent className="relative">
               {recentActivities && recentActivities.length > 0 ? (
-                <div className="space-y-3 max-h-[300px] overflow-y-auto">
+                <div className="space-y-3 max-h-[300px] overflow-y-auto scrollbar-thin pr-1">
                   {recentActivities.slice(0, 5).map((activity) => (
-                    <div key={activity.id} className="flex items-center gap-3 p-2 rounded-lg bg-muted/50">
-                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                    <div key={activity.id} className="flex items-center gap-3 p-2 rounded-lg bg-muted/50 group" title={activity.subject}>
+                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
                         <Activity className="w-4 h-4 text-primary" />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium truncate">{activity.subject}</p>
+                        <p className="text-sm font-medium line-clamp-2 group-hover:line-clamp-none transition-all" title={activity.subject}>
+                          {activity.subject}
+                        </p>
                         <p className="text-xs text-muted-foreground">
                           {activity.activity_type} • {format(new Date(activity.activity_date), 'dd/MM/yyyy HH:mm')}
                         </p>
                       </div>
                     </div>
                   ))}
+                  {/* Scroll indicator gradient */}
+                  <div className="absolute bottom-0 left-0 right-0 h-6 bg-gradient-to-t from-card to-transparent pointer-events-none" />
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center py-8 text-center">
@@ -531,6 +550,7 @@ const UserDashboard = () => {
           </Card>
         );
       case "performance":
+        const hasWonRevenue = (dealsData?.wonValue || 0) > 0;
         return (
           <Card className="h-full animate-fade-in">
             <CardHeader>
@@ -547,12 +567,22 @@ const UserDashboard = () => {
                 </div>
                 <Briefcase className="w-8 h-8 text-muted-foreground/50" />
               </div>
-              <div className="flex justify-between items-center p-3 bg-green-50 dark:bg-green-950/20 rounded-lg">
+              <div className={`flex justify-between items-center p-3 rounded-lg ${
+                hasWonRevenue 
+                  ? 'bg-green-50 dark:bg-green-950/20' 
+                  : 'bg-muted/50'
+              }`}>
                 <div>
                   <p className="text-sm text-muted-foreground">Won Revenue</p>
-                  <p className="text-xl font-bold text-green-600">{formatCurrency(dealsData?.wonValue || 0)}</p>
+                  <p className={`text-xl font-bold ${hasWonRevenue ? 'text-green-600' : 'text-muted-foreground'}`}>
+                    {formatCurrency(dealsData?.wonValue || 0)}
+                  </p>
                 </div>
-                <CheckCircle2 className="w-8 h-8 text-green-600/50" />
+                {hasWonRevenue ? (
+                  <CheckCircle2 className="w-8 h-8 text-green-600/50" />
+                ) : (
+                  <TrendingUp className="w-8 h-8 text-muted-foreground/30" />
+                )}
               </div>
             </CardContent>
           </Card>
@@ -564,17 +594,29 @@ const UserDashboard = () => {
               <CardTitle>Quick Actions</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <Button variant="outline" className="w-full justify-between" onClick={() => navigate('/leads')}>
+              <Button 
+                variant="outline" 
+                className="w-full justify-between group hover:bg-primary hover:text-primary-foreground transition-colors" 
+                onClick={() => navigate('/leads')}
+              >
                 <span className="flex items-center gap-2"><Plus className="w-4 h-4" />Add New Lead</span>
-                <ArrowRight className="w-4 h-4" />
+                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </Button>
-              <Button variant="outline" className="w-full justify-between" onClick={() => navigate('/contacts')}>
+              <Button 
+                variant="outline" 
+                className="w-full justify-between group hover:bg-primary hover:text-primary-foreground transition-colors" 
+                onClick={() => navigate('/contacts')}
+              >
                 <span className="flex items-center gap-2"><Plus className="w-4 h-4" />Add New Contact</span>
-                <ArrowRight className="w-4 h-4" />
+                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </Button>
-              <Button variant="outline" className="w-full justify-between" onClick={() => navigate('/deals')}>
+              <Button 
+                variant="outline" 
+                className="w-full justify-between group hover:bg-primary hover:text-primary-foreground transition-colors" 
+                onClick={() => navigate('/deals')}
+              >
                 <span className="flex items-center gap-2"><Plus className="w-4 h-4" />Create New Deal</span>
-                <ArrowRight className="w-4 h-4" />
+                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </Button>
             </CardContent>
           </Card>
@@ -583,26 +625,50 @@ const UserDashboard = () => {
         return (
           <Card className="h-full animate-fade-in">
             <CardHeader>
-              <CardTitle>Lead Status Overview</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                Lead Status Overview
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Info className="w-4 h-4 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Shows your leads categorized by current status</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="text-center p-4 bg-blue-50 dark:bg-blue-950/20 rounded-lg">
+                <div className="text-center p-4 bg-blue-50 dark:bg-blue-950/20 rounded-lg" title="Leads with 'New' status">
                   <p className="text-2xl font-bold text-blue-600">{leadsData?.new || 0}</p>
                   <p className="text-sm text-muted-foreground">New</p>
                 </div>
-                <div className="text-center p-4 bg-yellow-50 dark:bg-yellow-950/20 rounded-lg">
+                <div className="text-center p-4 bg-yellow-50 dark:bg-yellow-950/20 rounded-lg" title="Leads you've contacted">
                   <p className="text-2xl font-bold text-yellow-600">{leadsData?.contacted || 0}</p>
                   <p className="text-sm text-muted-foreground">Contacted</p>
                 </div>
-                <div className="text-center p-4 bg-green-50 dark:bg-green-950/20 rounded-lg">
+                <div className="text-center p-4 bg-green-50 dark:bg-green-950/20 rounded-lg" title="Leads that are qualified">
                   <p className="text-2xl font-bold text-green-600">{leadsData?.qualified || 0}</p>
                   <p className="text-sm text-muted-foreground">Qualified</p>
                 </div>
-                <div className="text-center p-4 bg-purple-50 dark:bg-purple-950/20 rounded-lg">
-                  <p className="text-2xl font-bold text-purple-600">{leadsData?.total || 0}</p>
-                  <p className="text-sm text-muted-foreground">Total</p>
-                </div>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="text-center p-4 bg-purple-50 dark:bg-purple-950/20 rounded-lg cursor-help" title="Total leads you've created">
+                        <p className="text-2xl font-bold text-purple-600">{leadsData?.total || 0}</p>
+                        <p className="text-sm text-muted-foreground flex items-center justify-center gap-1">
+                          Total Leads
+                          <Info className="w-3 h-3" />
+                        </p>
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Total number of leads you've created (all statuses)</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               </div>
             </CardContent>
           </Card>
@@ -629,13 +695,13 @@ const UserDashboard = () => {
   return (
     <div className="p-6 space-y-8">
       {/* Welcome Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-xl sm:text-2xl font-bold text-foreground truncate">
             Welcome back{userName ? `, ${userName}` : ''}!
           </h1>
         </div>
-        <Button variant="outline" size="sm" onClick={() => setCustomizeOpen(true)} className="gap-2">
+        <Button variant="outline" size="sm" onClick={() => setCustomizeOpen(true)} className="gap-2 flex-shrink-0">
           <Settings2 className="w-4 h-4" />
           Customize
         </Button>

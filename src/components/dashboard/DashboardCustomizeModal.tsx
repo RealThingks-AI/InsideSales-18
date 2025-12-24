@@ -184,13 +184,17 @@ export const DashboardCustomizeModal = ({
                               value={widget.size}
                               onValueChange={(value: WidgetSize) => changeSize(widget.key, value)}
                             >
-                              <SelectTrigger className="w-[70px] h-8 text-xs">
+                              <SelectTrigger className={`w-[80px] h-8 text-xs font-medium ${
+                                widget.size === 'small' ? 'bg-blue-100 dark:bg-blue-900/30 border-blue-300' :
+                                widget.size === 'medium' ? 'bg-amber-100 dark:bg-amber-900/30 border-amber-300' :
+                                'bg-green-100 dark:bg-green-900/30 border-green-300'
+                              }`}>
                                 <SelectValue />
                               </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="small">Small</SelectItem>
-                                <SelectItem value="medium">Medium</SelectItem>
-                                <SelectItem value="large">Large</SelectItem>
+                              <SelectContent className="bg-popover border shadow-lg">
+                                <SelectItem value="small" className="data-[state=checked]:bg-blue-100 dark:data-[state=checked]:bg-blue-900/30">Small</SelectItem>
+                                <SelectItem value="medium" className="data-[state=checked]:bg-amber-100 dark:data-[state=checked]:bg-amber-900/30">Medium</SelectItem>
+                                <SelectItem value="large" className="data-[state=checked]:bg-green-100 dark:data-[state=checked]:bg-green-900/30">Large</SelectItem>
                               </SelectContent>
                             </Select>
                             <Switch
