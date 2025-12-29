@@ -126,7 +126,7 @@ export const ResizableDashboard = ({
               <Button
                 variant="destructive"
                 size="icon"
-                className="dash-remove"
+                className="dash-remove absolute -top-2 -right-2 z-30 h-6 w-6 rounded-full shadow-lg border-2 border-background"
                 onClick={(e) => {
                   e.stopPropagation();
                   onWidgetRemove(key);
@@ -198,16 +198,6 @@ export const ResizableDashboard = ({
           border: 2px solid hsl(var(--primary) / 0.45);
         }
 
-        .dash-remove {
-          position: absolute;
-          top: -8px;
-          right: -8px;
-          z-index: 20;
-          height: 24px;
-          width: 24px;
-          border-radius: 9999px;
-          box-shadow: 0 6px 16px hsl(var(--foreground) / 0.12);
-        }
 
         .dash-drag-handle {
           position: absolute;

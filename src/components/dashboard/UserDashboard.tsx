@@ -206,23 +206,19 @@ const UserDashboard = () => {
     setWidgetLayouts(newLayouts);
   }, []);
 
-  // Handle widget removal
+  // Handle widget removal - add to pending changes instead of saving immediately
   const handleWidgetRemove = useCallback((key: WidgetKey) => {
-    const nextVisible = visibleWidgets.filter((w) => w !== key);
-    const nextOrder = widgetOrder.filter((w) => w !== key);
-    const nextLayouts = { ...widgetLayouts };
-    delete nextLayouts[key];
-
-    setVisibleWidgets(nextVisible);
-    setWidgetOrder(nextOrder);
-    setWidgetLayouts(nextLayouts);
-
-    savePreferencesMutation.mutate({
-      widgets: nextVisible,
-      order: nextOrder,
-      layouts: nextLayouts,
+    // Toggle the widget in pending changes (same logic as adding)
+    setPendingWidgetChanges(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
     });
-  }, [visibleWidgets, widgetOrder, widgetLayouts, savePreferencesMutation]);
+  }, []);
 
   // Toggle widget in pending changes (for batch add/remove)
   const togglePendingWidget = useCallback((key: WidgetKey) => {
