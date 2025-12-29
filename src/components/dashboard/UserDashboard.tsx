@@ -245,6 +245,39 @@ const UserDashboard = () => {
     return isPending ? !isCurrentlyVisible : isCurrentlyVisible;
   }, [visibleWidgets, pendingWidgetChanges]);
 
+  // Find next available grid position for a widget
+  const findNextGridPosition = useCallback((existingLayouts: WidgetLayoutConfig, widgetWidth: number, widgetHeight: number) => {
+    const COLS = 12;
+    const grid: boolean[][] = [];
+    
+    // Build occupancy grid from existing layouts
+    Object.values(existingLayouts).forEach(layout => {
+      if (!layout) return;
+      for (let row = layout.y; row < layout.y + layout.h; row++) {
+        if (!grid[row]) grid[row] = new Array(COLS).fill(false);
+        for (let col = layout.x; col < Math.min(layout.x + layout.w, COLS); col++) {
+          grid[row][col] = true;
+        }
+      }
+    });
+    
+    // Find first position where widget fits
+    for (let y = 0; y < 100; y++) {
+      if (!grid[y]) grid[y] = new Array(COLS).fill(false);
+      for (let x = 0; x <= COLS - widgetWidth; x++) {
+        let fits = true;
+        for (let dy = 0; dy < widgetHeight && fits; dy++) {
+          if (!grid[y + dy]) grid[y + dy] = new Array(COLS).fill(false);
+          for (let dx = 0; dx < widgetWidth && fits; dx++) {
+            if (grid[y + dy][x + dx]) fits = false;
+          }
+        }
+        if (fits) return { x, y };
+      }
+    }
+    return { x: 0, y: Object.keys(existingLayouts).length * 2 };
+  }, []);
+
   // Apply pending widget changes
   const applyPendingChanges = useCallback(() => {
     if (pendingWidgetChanges.size === 0) return;
@@ -262,24 +295,21 @@ const UserDashboard = () => {
         nextOrder = nextOrder.filter(w => w !== key);
         delete nextLayouts[key];
       } else {
-        // Add widget
+        // Add widget - use consistent 3x2 size and find next available slot
         nextVisible.push(key);
         if (!nextOrder.includes(key)) {
           nextOrder.push(key);
         }
         
-        const defaultLayout =
-          DEFAULT_WIDGETS.find((w) => w.key === key)?.defaultLayout ??
-          ({ x: 0, y: 0, w: 3, h: 2 } as WidgetLayout);
-
-        const maxY = Math.max(
-          0,
-          ...Object.values(nextLayouts).map((l) => (l?.y ?? 0) + (l?.h ?? 0))
-        );
+        const widgetW = 3;
+        const widgetH = 2;
+        const position = findNextGridPosition(nextLayouts, widgetW, widgetH);
 
         nextLayouts[key] = {
-          ...defaultLayout,
-          y: maxY,
+          x: position.x,
+          y: position.y,
+          w: widgetW,
+          h: widgetH,
         };
       }
     });
@@ -288,13 +318,10 @@ const UserDashboard = () => {
     setWidgetOrder(nextOrder);
     setWidgetLayouts(nextLayouts);
     setPendingWidgetChanges(new Set());
-  }, [pendingWidgetChanges, visibleWidgets, widgetOrder, widgetLayouts]);
+  }, [pendingWidgetChanges, visibleWidgets, widgetOrder, widgetLayouts, findNextGridPosition]);
 
   // Save layout and exit resize mode
   const handleSaveLayout = () => {
-    // Apply any pending widget changes first
-    applyPendingChanges();
-    
     // Get final state after applying changes
     let finalVisible = [...visibleWidgets];
     let finalOrder = [...widgetOrder];
@@ -314,21 +341,23 @@ const UserDashboard = () => {
           finalOrder.push(key);
         }
         
-        const defaultLayout =
-          DEFAULT_WIDGETS.find((w) => w.key === key)?.defaultLayout ??
-          ({ x: 0, y: 0, w: 3, h: 2 } as WidgetLayout);
-
-        const maxY = Math.max(
-          0,
-          ...Object.values(finalLayouts).map((l) => (l?.y ?? 0) + (l?.h ?? 0))
-        );
+        const widgetW = 3;
+        const widgetH = 2;
+        const position = findNextGridPosition(finalLayouts, widgetW, widgetH);
 
         finalLayouts[key] = {
-          ...defaultLayout,
-          y: maxY,
+          x: position.x,
+          y: position.y,
+          w: widgetW,
+          h: widgetH,
         };
       }
     });
+    
+    // Update local state
+    setVisibleWidgets(finalVisible);
+    setWidgetOrder(finalOrder);
+    setWidgetLayouts(finalLayouts);
     
     savePreferencesMutation.mutate({
       widgets: finalVisible,
