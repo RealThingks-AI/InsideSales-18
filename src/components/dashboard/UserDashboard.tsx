@@ -111,21 +111,26 @@ const UserDashboard = () => {
   useEffect(() => {
     const updateWidth = () => {
       if (containerRef.current) {
-        // Get the actual content width (excluding padding)
-        const styles = getComputedStyle(containerRef.current);
-        const paddingLeft = parseFloat(styles.paddingLeft) || 0;
-        const paddingRight = parseFloat(styles.paddingRight) || 0;
-        const contentWidth = containerRef.current.clientWidth - paddingLeft - paddingRight;
-        setContainerWidth(Math.max(320, contentWidth));
+        // Use full client width for edge-to-edge layout
+        const width = containerRef.current.clientWidth;
+        setContainerWidth(Math.max(320, width));
       }
     };
-    // Use ResizeObserver for more accurate width tracking
+    
+    // ResizeObserver for container size changes
     const observer = new ResizeObserver(updateWidth);
     if (containerRef.current) {
       observer.observe(containerRef.current);
     }
+    
+    // Also listen to window resize for viewport changes
+    window.addEventListener('resize', updateWidth);
     updateWidth();
-    return () => observer.disconnect();
+    
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', updateWidth);
+    };
   }, []);
   
   const { data: userName } = useQuery({
@@ -1678,7 +1683,7 @@ const UserDashboard = () => {
   };
 
   return (
-    <div className="p-4 space-y-4 w-full max-w-full overflow-x-hidden" ref={containerRef}>
+    <div className="px-2 sm:px-4 py-4 space-y-4 w-full" ref={containerRef}>
       {/* Welcome Header */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="min-w-0 flex-1">
