@@ -6,9 +6,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Mail, Send, Loader2, Paperclip, X, FileIcon } from "lucide-react";
+import { RichTextEditor } from "@/components/shared/RichTextEditor";
 
 // Generic recipient interface that works with contacts, leads, and accounts
 export interface EmailRecipient {
@@ -195,6 +195,10 @@ export const SendEmailModal = ({ open, onOpenChange, recipient, contactId, leadI
         }))
       );
 
+      // Determine entity type and id
+      const entityType = contactId ? 'contact' : leadId ? 'lead' : accountId ? 'account' : undefined;
+      const entityId = contactId || leadId || accountId || undefined;
+
       const { data, error } = await supabase.functions.invoke('send-email', {
         body: {
           to: emailRecipient.email,
@@ -203,6 +207,8 @@ export const SendEmailModal = ({ open, onOpenChange, recipient, contactId, leadI
           body: body.trim(),
           from: senderEmail,
           attachments: attachmentData,
+          entityType,
+          entityId,
         },
       });
 
@@ -303,12 +309,10 @@ export const SendEmailModal = ({ open, onOpenChange, recipient, contactId, leadI
 
           <div className="space-y-2">
             <Label htmlFor="body">Message</Label>
-            <Textarea
-              id="body"
+            <RichTextEditor
               value={body}
-              onChange={(e) => setBody(e.target.value)}
+              onChange={setBody}
               placeholder="Email message..."
-              rows={6}
             />
           </div>
 
