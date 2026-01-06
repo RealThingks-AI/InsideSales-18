@@ -387,4 +387,48 @@ All colors MUST be HSL.
   .dashboard-widget {
     @apply h-full overflow-hidden flex flex-col animate-fade-in;
   }
+
+  /* Email body preview styling */
+  .email-body-preview {
+    @apply text-foreground;
+  }
+  .email-body-preview a {
+    @apply text-primary underline;
+  }
+  .email-body-preview ul,
+  .email-body-preview ol {
+    @apply pl-6 my-2;
+  }
+  .email-body-preview ul {
+    @apply list-disc;
+  }
+  .email-body-preview ol {
+    @apply list-decimal;
+  }
+  .email-body-preview p {
+    @apply mb-2;
+  }
+  .email-body-preview h1 {
+    @apply text-xl font-bold mb-2;
+  }
+  .email-body-preview h2 {
+    @apply text-lg font-semibold mb-2;
+  }
+  .email-body-preview h3 {
+    @apply text-base font-semibold mb-1;
+  }
+
+  /* Rich text editor styling */
+  .rich-text-editor .ql-container {
+    @apply border-border rounded-b-md min-h-[150px] bg-background text-foreground;
+  }
+  .rich-text-editor .ql-toolbar {
+    @apply border-border rounded-t-md bg-muted/30;
+  }
+  .rich-text-editor .ql-editor {
+    @apply min-h-[150px];
+  }
+  .rich-text-editor .ql-editor.ql-blank::before {
+    @apply text-muted-foreground;
+  }
 }
