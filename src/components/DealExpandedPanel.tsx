@@ -587,86 +587,86 @@ const StakeholdersSection = ({ deal, queryClient }: {deal: Deal;queryClient: Ret
                 {stakeholders.filter((s) => s.note).length === 0 ? "No stakeholder notes yet." : "No matching notes."}
               </p> :
 
-            <div className="space-y-1 max-h-[200px] overflow-y-auto">
+            <div className="space-y-2 max-h-[280px] overflow-y-auto">
                 {stakeholdersWithNotes.map((s) =>
-              <div key={s.id} className="flex items-start gap-2 p-1.5 rounded-md bg-muted/30 border border-border/30">
-                    <Badge variant="secondary" className={cn("text-[10px] px-1.5 py-0 h-4 shrink-0", s.badgeBg)}>
-                      {s.roleLabel}
-                    </Badge>
-                    <div className="min-w-0 flex-1">
-                      {/* Header row: contact name + action icons */}
-                      <div className="flex items-center justify-between gap-1">
-                        <span className="text-xs font-medium">{s.contactName}</span>
-                        {editingNote !== s.id && (
-                          <div className="flex items-center gap-0.5 shrink-0">
-                            <button
-                              onClick={() => { setEditingNote(s.id); setNoteText(formatWithBullets(s.note || "")); }}
-                              className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
-                              title="Edit note">
-                              <Pencil className="h-3 w-3" />
-                            </button>
-                            <button
-                              onClick={() => setDeletingNoteId(s.id)}
-                              className="p-0.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
-                              title="Delete note">
-                              <Trash2 className="h-3 w-3" />
-                            </button>
-                          </div>
-                        )}
+              <div key={s.id} className="rounded-lg bg-muted/50 border border-border/40 p-2.5">
+                    {/* Header row */}
+                    <div className="flex items-center justify-between gap-2 border-b border-border/30 pb-1.5 mb-1.5">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Badge variant="secondary" className={cn("text-[10px] px-1.5 py-0 h-4 shrink-0", s.badgeBg)}>
+                          {s.roleLabel}
+                        </Badge>
+                        <span className="text-xs font-medium truncate">{s.contactName}</span>
                       </div>
-
-                      {/* Inline edit mode OR read-only bullets */}
-                      {editingNote === s.id ? (
-                        <div className="mt-1 space-y-1">
-                          <Textarea
-                            value={noteText}
-                            onChange={(e) => setNoteText(e.target.value)}
-                            onKeyDown={handleNoteKeyDown}
-                            className="min-h-[80px] text-xs resize-none"
-                            autoFocus
-                          />
-                          <div className="flex gap-1">
-                            <Button size="sm" className="h-6 text-[10px] px-2" onClick={() => handleSaveNote(s.id, noteText)}>
-                              Save
-                            </Button>
-                            <Button size="sm" variant="ghost" className="h-6 text-[10px] px-2" onClick={() => setEditingNote(null)}>
-                              Cancel
-                            </Button>
-                          </div>
-                        </div>
-                      ) : (
-                        <ul className="mt-0.5 space-y-0">
-                          {(s.note || "").split("\n").filter((l) => l.trim()).map((line, i) =>
-                            <li key={i} className="text-[11px] text-muted-foreground flex items-start gap-1">
-                              <span className="shrink-0">•</span>
-                              <span>{line.trim()}</span>
-                            </li>
-                          )}
-                        </ul>
-                      )}
-
-                      {/* Delete confirmation inline */}
-                      {deletingNoteId === s.id && (
-                        <div className="mt-1 flex items-center gap-1.5 p-1.5 rounded bg-destructive/10 border border-destructive/20">
-                          <span className="text-[10px] text-destructive font-medium">Delete this note?</span>
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            className="h-5 text-[10px] px-2"
-                            onClick={() => { handleSaveNote(s.id, ""); setDeletingNoteId(null); }}>
-                            Yes
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-5 text-[10px] px-2"
-                            onClick={() => setDeletingNoteId(null)}>
-                            No
-                          </Button>
+                      {editingNote !== s.id && (
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            onClick={() => { setEditingNote(s.id); setNoteText(formatWithBullets(s.note || "")); }}
+                            className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+                            title="Edit note">
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={() => setDeletingNoteId(s.id)}
+                            className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                            title="Delete note">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
                         </div>
                       )}
                     </div>
-                  </div>
+
+                    {/* Inline edit mode OR read-only bullets */}
+                    {editingNote === s.id ? (
+                      <div className="space-y-2">
+                        <Textarea
+                          value={noteText}
+                          onChange={(e) => setNoteText(e.target.value)}
+                          onKeyDown={handleNoteKeyDown}
+                          className="min-h-[100px] text-xs resize-none"
+                          autoFocus
+                        />
+                        <div className="flex justify-end gap-1.5">
+                          <Button size="sm" variant="outline" className="h-7 text-xs px-3" onClick={() => setEditingNote(null)}>
+                            Cancel
+                          </Button>
+                          <Button size="sm" className="h-7 text-xs px-3" onClick={() => handleSaveNote(s.id, noteText)}>
+                            Save
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <ul className="space-y-0.5 pl-1">
+                        {(s.note || "").split("\n").filter((l) => l.trim()).map((line, i) =>
+                          <li key={i} className="text-xs leading-relaxed text-muted-foreground flex items-start gap-1.5">
+                            <span className="shrink-0 text-muted-foreground/60">•</span>
+                            <span>{line.trim()}</span>
+                          </li>
+                        )}
+                      </ul>
+                    )}
+
+                    {/* Delete confirmation inline */}
+                    {deletingNoteId === s.id && (
+                      <div className="mt-1.5 flex items-center gap-2 p-2 rounded-md bg-destructive/10 border border-destructive/20">
+                        <span className="text-xs text-destructive font-medium">Delete this note?</span>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          className="h-6 text-[11px] px-2.5"
+                          onClick={() => { handleSaveNote(s.id, ""); setDeletingNoteId(null); }}>
+                          Yes
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-6 text-[11px] px-2.5"
+                          onClick={() => setDeletingNoteId(null)}>
+                          No
+                        </Button>
+                      </div>
+                    )}
+              </div>
               )}
               </div>
             }
