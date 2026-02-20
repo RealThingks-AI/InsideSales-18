@@ -1,44 +1,57 @@
 
 
-## Stakeholders Section: Inline Add Button and Visual Separators
+## Add Edit and Delete Actions to Stakeholder Notes
 
-### Problem
-1. The "+" add contact button sits on a separate line below existing contacts, wasting vertical space and looking disconnected
-2. The Stakeholders grid cells lack visual separation -- all four roles blend together without clear boundaries
+### What Changes
+When the Notes section is expanded in the Deal Expanded Panel, each note will get action buttons (Edit and Delete) so users can manage notes directly from the summary view.
 
-### Changes (all in `src/components/DealExpandedPanel.tsx`)
+### Current Behavior
+- Notes are displayed as read-only bullet lists under each stakeholder
+- To edit a note, users must go through the stakeholder info icon
+- No way to delete a note from the summary view
 
-### Fix 1: Make "+" button inline with contacts
-
-**Current behavior (lines 539-547):** The `StakeholderAddDropdown` "+" button is in its own `div` below the list of contacts, always on a new row.
-
-**New behavior:** 
-- When contacts exist for a role, place the "+" button inline (inside the same flex row) after the last contact's action icons
-- When no contacts exist, show the "+" button on the first line (same as the role label)
-- New contacts added will appear as separate rows below existing ones
-
-**Implementation:**
-- Remove the standalone add dropdown wrapper `div` at lines 539-547
-- For each role cell, render contacts as rows and append the `StakeholderAddDropdown` inline in the last contact's row (after the X remove button)
-- If no contacts exist, render a single row with just the `StakeholderAddDropdown`
-
-### Fix 2: Add visual separators between roles
-
-**Current:** Cells have subtle `border-b` and `border-r` but minimal visual distinction between the four quadrants.
-
-**Changes:**
-- Add a slightly stronger border color between cells: `border-border/30` to `border-border/50`
-- Add alternating subtle background tint to distinguish rows: odd rows get a very light `bg-muted/10`
-- Ensure the left colored border (`border-l-2`) per role is more prominent for visual anchoring
+### New Behavior
+- Each note card will show a small actions menu (three-dot dropdown) on hover or always visible
+- **Edit**: Opens an inline textarea to edit the note, with Save/Cancel buttons
+- **Delete**: Shows a confirmation prompt, then clears the note from the stakeholder record
 
 ### Technical Details
 
-**Lines affected in `src/components/DealExpandedPanel.tsx`:**
+**File: `src/components/DealExpandedPanel.tsx`**
 
-| Lines | Change |
-|-------|--------|
-| 449-454 | Increase border opacity from `border-border/30` to `border-border/50` for better separation |
-| 465-548 | Restructure the contact list and add button layout -- move `StakeholderAddDropdown` inline with the last contact row instead of a separate block |
-| 539-547 | Remove standalone add button wrapper; integrate it into the contact row or show as first element if no contacts |
+1. Add a `deletingNote` state to track which note is being deleted (for confirmation)
+2. Modify the notes summary panel (lines 580-597) to add action buttons to each note card:
 
-No new files. No database changes.
+```
+Each note card will change from:
+  [Badge] [Contact Name]
+  - bullet point 1
+  - bullet point 2
+
+To:
+  [Badge] [Contact Name]          [Edit] [Delete]
+  - bullet point 1
+  - bullet point 2
+
+  -- OR when editing --
+  [Badge] [Contact Name]
+  [textarea with current note]
+  [Save] [Cancel]
+```
+
+3. When **Edit** is clicked:
+   - Set `editingNote` to that stakeholder's ID (reuse existing state)
+   - Show a textarea pre-filled with the current note
+   - Show Save/Cancel buttons
+   - On Save, call the existing `handleSaveNote` function
+
+4. When **Delete** is clicked:
+   - Show a small confirmation (inline or alert)
+   - On confirm, call `handleSaveNote(stakeholderId, "")` which sets note to null
+
+5. Import `DropdownMenu` components (or use simple icon buttons) for the actions:
+   - `Pencil` icon for Edit
+   - `Trash2` icon for Delete
+
+No database changes needed -- the existing `deal_stakeholders.note` column and `handleSaveNote` function handle everything.
+
