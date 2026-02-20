@@ -312,7 +312,6 @@ const StakeholdersSection = ({ deal, queryClient }: {deal: Deal;queryClient: Ret
   const { user } = useAuth();
   const cellRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [editingNote, setEditingNote] = useState<string | null>(null);
-  const [editingNoteSource, setEditingNoteSource] = useState<'popover' | 'inline' | null>(null);
   const [noteText, setNoteText] = useState("");
   const [showNotesSummary, setShowNotesSummary] = useState(false);
   const [noteSearch, setNoteSearch] = useState("");
@@ -530,44 +529,22 @@ const StakeholdersSection = ({ deal, queryClient }: {deal: Deal;queryClient: Ret
                           {contactNames[sh.contact_id] || "…"}
                         </span>
 
-                        {/* Info/Note button */}
-                        <Popover
-                        open={editingNote === sh.id}
-                        onOpenChange={(open) => {
-                          if (open) {setEditingNote(sh.id);setEditingNoteSource('popover');setNoteText(formatWithBullets(sh.note || ""));} else
-                          {handleSaveNote(sh.id, noteText);setEditingNoteSource(null);}
-                        }}>
-
-                          <PopoverTrigger asChild>
-                            <button
-                            className={cn(
-                              "flex items-center justify-center w-6 h-6 rounded transition-all shrink-0",
-                              sh.note ?
-                              "text-primary hover:bg-primary/10" :
-                              "opacity-0 group-hover/row:opacity-60 hover:!opacity-100 text-muted-foreground hover:bg-accent/80"
-                            )}
-                            title={sh.note ? "View/Edit note" : "Add note"}>
-
-                              <Info className="h-3.5 w-3.5" />
-                            </button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-[480px] p-3 z-[200]" side="bottom" align="start" avoidCollisions={true}>
-                            <Textarea
-                            value={noteText}
-                            onChange={(e) => setNoteText(e.target.value)}
-                            onKeyDown={handleNoteKeyDown}
-                            placeholder="• Add notes about this contact…"
-                            className="text-xs min-h-[100px] resize-none"
-                            autoFocus />
-                            <Button
-                            size="sm"
-                            className="mt-2 h-7 text-xs w-full"
-                            onClick={() => handleSaveNote(sh.id, noteText)}>
-
-                              Save
-                            </Button>
-                          </PopoverContent>
-                        </Popover>
+                        {/* Info/Note button - opens Notes Summary panel with inline editor */}
+                        <button
+                          className={cn(
+                            "flex items-center justify-center w-6 h-6 rounded transition-all shrink-0",
+                            sh.note ?
+                            "text-primary hover:bg-primary/10" :
+                            "opacity-0 group-hover/row:opacity-60 hover:!opacity-100 text-muted-foreground hover:bg-accent/80"
+                          )}
+                          title={sh.note ? "View/Edit note" : "Add note"}
+                          onClick={() => {
+                            setShowNotesSummary(true);
+                            setEditingNote(sh.id);
+                            setNoteText(formatWithBullets(sh.note || ""));
+                          }}>
+                          <Info className="h-3.5 w-3.5" />
+                        </button>
 
                         {/* Remove button */}
                         <button
@@ -620,10 +597,10 @@ const StakeholdersSection = ({ deal, queryClient }: {deal: Deal;queryClient: Ret
                       {/* Header row: contact name + action icons */}
                       <div className="flex items-center justify-between gap-1">
                         <span className="text-xs font-medium">{s.contactName}</span>
-                        {editingNote !== s.id && editingNoteSource !== 'popover' && (
+                        {editingNote !== s.id && (
                           <div className="flex items-center gap-0.5 shrink-0">
                             <button
-                              onClick={() => { setEditingNote(s.id); setEditingNoteSource('inline'); setNoteText(formatWithBullets(s.note || "")); }}
+                              onClick={() => { setEditingNote(s.id); setNoteText(formatWithBullets(s.note || "")); }}
                               className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
                               title="Edit note">
                               <Pencil className="h-3 w-3" />
@@ -639,7 +616,7 @@ const StakeholdersSection = ({ deal, queryClient }: {deal: Deal;queryClient: Ret
                       </div>
 
                       {/* Inline edit mode OR read-only bullets */}
-                      {editingNote === s.id && editingNoteSource === 'inline' ? (
+                      {editingNote === s.id ? (
                         <div className="mt-1 space-y-1">
                           <Textarea
                             value={noteText}
@@ -649,10 +626,10 @@ const StakeholdersSection = ({ deal, queryClient }: {deal: Deal;queryClient: Ret
                             autoFocus
                           />
                           <div className="flex gap-1">
-                            <Button size="sm" className="h-6 text-[10px] px-2" onClick={() => { handleSaveNote(s.id, noteText); setEditingNoteSource(null); }}>
+                            <Button size="sm" className="h-6 text-[10px] px-2" onClick={() => handleSaveNote(s.id, noteText)}>
                               Save
                             </Button>
-                            <Button size="sm" variant="ghost" className="h-6 text-[10px] px-2" onClick={() => { setEditingNote(null); setEditingNoteSource(null); }}>
+                            <Button size="sm" variant="ghost" className="h-6 text-[10px] px-2" onClick={() => setEditingNote(null)}>
                               Cancel
                             </Button>
                           </div>
@@ -676,7 +653,7 @@ const StakeholdersSection = ({ deal, queryClient }: {deal: Deal;queryClient: Ret
                             size="sm"
                             variant="destructive"
                             className="h-5 text-[10px] px-2"
-                            onClick={() => { handleSaveNote(s.id, ""); setDeletingNoteId(null); setEditingNoteSource(null); }}>
+                            onClick={() => { handleSaveNote(s.id, ""); setDeletingNoteId(null); }}>
                             Yes
                           </Button>
                           <Button
