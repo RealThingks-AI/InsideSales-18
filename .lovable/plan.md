@@ -1,51 +1,73 @@
 
 
-## Optimize Notes Summary Layout
+## Fix: Info Icon Should Open Note Editor for Specific Contact Only
 
-### Current Issues
-- The layout is flat and cramped: the role badge, contact name, bullet list, and Save/Cancel buttons are all squeezed together with minimal visual hierarchy.
-- The textarea and buttons feel disconnected from the header.
-- Save/Cancel buttons are tiny and hard to click.
-- No clear visual separation between the header area and the content/editing area.
+### Root Cause
+Two issues found in `src/components/DealExpandedPanel.tsx`:
 
-### Proposed Visual Improvements (File: `src/components/DealExpandedPanel.tsx`)
+1. **`stakeholdersWithNotes` filters out contacts without notes** (line 449: `stakeholders.filter((s) => s.note)`). When clicking the info icon on a contact that has no note yet, `editingNote` is set to that stakeholder's ID, but that stakeholder is excluded from the rendered list -- so nothing appears or the panel shows only other contacts' notes.
 
-**1. Restructure the card layout (lines 592-646)**
-- Give each stakeholder note card a cleaner structure: a distinct header row (badge + name + action icons) with a subtle bottom border, followed by the content area below.
-- Increase padding from `p-1.5` to `p-2.5` for breathing room.
-- Use a slightly stronger background: `bg-muted/50` instead of `bg-muted/30`.
+2. **All notes are shown at once** when the panel opens. The user expects that clicking the info/add button for a specific contact should show/edit only that contact's note, not display all stakeholder notes.
 
-**2. Improve the header row (lines 593-616)**
-- Move the badge and contact name into a more cohesive inline layout with proper vertical alignment.
-- Make action icons (edit/delete) slightly larger (`h-3.5 w-3.5`) and add a subtle separator or spacing from the name.
+### Changes (single file: `src/components/DealExpandedPanel.tsx`)
 
-**3. Improve the textarea editing area (lines 619-636)**
-- Add a rounded border and subtle background to the textarea container so it looks like a proper input card.
-- Increase textarea min-height to `100px` for comfortable editing.
-- Move Save/Cancel buttons to the right side with proper spacing and slightly larger touch targets (`h-7` instead of `h-6`).
-- Use an outline-style Cancel button for better contrast against the primary Save button.
+**1. Include the actively-edited stakeholder in the filtered list (line 449)**
+Change the filter from:
+```
+stakeholders.filter((s) => s.note)
+```
+to:
+```
+stakeholders.filter((s) => s.note || s.id === editingNote)
+```
+Also add `editingNote` to the `useMemo` dependency array (line 457).
 
-**4. Improve read-only bullet list (lines 638-645)**
-- Add slight left padding/indent so bullets are visually nested under the header.
-- Increase line text size from `text-[11px]` to `text-xs` for readability.
-- Add `leading-relaxed` for comfortable line spacing.
+**2. When info icon is clicked, show only that contact's note card**
+Instead of showing all notes when the summary panel opens from the info icon click, filter the displayed list to only the stakeholder being edited. This can be done by:
+- Adding a state like `focusedNoteId` (set when info icon is clicked, cleared when the panel is manually toggled via the "Notes" button).
+- When `focusedNoteId` is set, render only the matching stakeholder card instead of the full `stakeholdersWithNotes` list.
+- When the user clicks the "Notes (N)" toggle button at the top, clear `focusedNoteId` so all notes are shown as before.
 
-**5. Increase the max-height of the scrollable area (line 590)**
-- Change from `max-h-[200px]` to `max-h-[280px]` so more content is visible without scrolling.
+**3. Update the info icon click handler (line 541-544)**
+Set `focusedNoteId` alongside the existing state updates:
+```
+onClick={() => {
+  setShowNotesSummary(true);
+  setFocusedNoteId(sh.id);
+  setEditingNote(sh.id);
+  setNoteText(formatWithBullets(sh.note || ""));
+}}
+```
 
-### Summary of Changes
+**4. Update the "Notes (N)" toggle button**
+When toggling the panel via the Notes button, clear `focusedNoteId` so all notes display:
+```
+onClick={() => {
+  setShowNotesSummary(!showNotesSummary);
+  setFocusedNoteId(null);
+}}
+```
 
-| Element | Before | After |
-|---------|--------|-------|
-| Card padding | `p-1.5` | `p-2.5` |
-| Card background | `bg-muted/30` | `bg-muted/50` |
-| Header separator | None | `border-b pb-1.5 mb-1.5` on header row |
-| Action icon size | `h-3 w-3` | `h-3.5 w-3.5` |
-| Textarea min-height | `80px` | `100px` |
-| Save/Cancel buttons | `h-6 text-[10px]` | `h-7 text-xs`, right-aligned |
-| Bullet text size | `text-[11px]` | `text-xs leading-relaxed` |
-| Scroll area height | `max-h-[200px]` | `max-h-[280px]` |
-| Cancel button variant | `ghost` | `outline` |
+**5. Filter the rendered list based on focus**
+In the rendering section (line 591), use a computed list:
+```
+const displayedNotes = focusedNoteId
+  ? stakeholdersWithNotes.filter(s => s.id === focusedNoteId)
+  : stakeholdersWithNotes;
+```
+Then map over `displayedNotes` instead of `stakeholdersWithNotes`.
 
-Only one file is modified: `src/components/DealExpandedPanel.tsx`
+**6. Clear focusedNoteId on save/cancel/delete**
+Reset `focusedNoteId` to `null` in the save handler, cancel button, and delete confirmation so the panel reverts to showing all notes after editing completes.
+
+### Summary
+
+| Change | Location | Purpose |
+|--------|----------|---------|
+| Include editing stakeholder in filter | Line 449 | Show card for contacts without existing notes |
+| Add `focusedNoteId` state | Near line 310 | Track which contact's note to isolate |
+| Set focus on info icon click | Line 541 | Isolate to clicked contact |
+| Clear focus on Notes toggle | Notes button onClick | Show all notes when toggled manually |
+| Filter displayed list | Line 591 | Render only focused contact or all |
+| Clear focus on save/cancel/delete | Various handlers | Return to full view after editing |
 
