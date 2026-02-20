@@ -383,8 +383,51 @@ const StakeholdersSection = ({ deal, queryClient }: {deal: Deal;queryClient: Ret
     queryClient.invalidateQueries({ queryKey: ["deal-stakeholders", deal.id] });
   };
 
+  // Helper: ensure every non-empty line starts with "• "
+  const formatWithBullets = (text: string): string => {
+    if (!text) return "• ";
+    const lines = text.split("\n").map((l) => {
+      const trimmed = l.replace(/^•\s*/, "").trim();
+      return trimmed ? `• ${trimmed}` : "";
+    }).filter(Boolean);
+    return lines.length > 0 ? lines.join("\n") : "• ";
+  };
+
+  // Helper: strip bullet prefixes before saving
+  const stripBullets = (text: string): string => {
+    return text.split("\n").map((l) => l.replace(/^•\s*/, "").trim()).filter(Boolean).join("\n");
+  };
+
+  // Handle Enter/Backspace for auto-bullet behavior
+  const handleNoteKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    const ta = e.currentTarget;
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const pos = ta.selectionStart;
+      const val = noteText;
+      const newVal = val.substring(0, pos) + "\n• " + val.substring(pos);
+      setNoteText(newVal);
+      requestAnimationFrame(() => { ta.selectionStart = ta.selectionEnd = pos + 3; });
+    } else if (e.key === "Backspace") {
+      const pos = ta.selectionStart;
+      const val = noteText;
+      // If cursor is right after "• " on an otherwise empty line, remove the whole line
+      const beforeCursor = val.substring(0, pos);
+      const lineStart = beforeCursor.lastIndexOf("\n") + 1;
+      const lineContent = beforeCursor.substring(lineStart);
+      if (lineContent === "• " && pos === lineStart + 2) {
+        e.preventDefault();
+        const removeFrom = lineStart > 0 ? lineStart - 1 : 0;
+        const newVal = val.substring(0, removeFrom) + val.substring(pos);
+        setNoteText(newVal);
+        requestAnimationFrame(() => { ta.selectionStart = ta.selectionEnd = removeFrom; });
+      }
+    }
+  };
+
   const handleSaveNote = async (stakeholderId: string, note: string) => {
-    await supabase.from("deal_stakeholders").update({ note: note || null }).eq("id", stakeholderId);
+    const cleaned = stripBullets(note);
+    await supabase.from("deal_stakeholders").update({ note: cleaned || null }).eq("id", stakeholderId);
     queryClient.invalidateQueries({ queryKey: ["deal-stakeholders", deal.id] });
     setEditingNote(null);
   };
@@ -490,7 +533,7 @@ const StakeholdersSection = ({ deal, queryClient }: {deal: Deal;queryClient: Ret
                         <Popover
                         open={editingNote === sh.id}
                         onOpenChange={(open) => {
-                          if (open) {setEditingNote(sh.id);setNoteText(sh.note || "");} else
+                          if (open) {setEditingNote(sh.id);setNoteText(formatWithBullets(sh.note || ""));} else
                           {handleSaveNote(sh.id, noteText);}
                         }}>
 
@@ -508,27 +551,13 @@ const StakeholdersSection = ({ deal, queryClient }: {deal: Deal;queryClient: Ret
                             </button>
                           </PopoverTrigger>
                           <PopoverContent className="w-[480px] p-3 z-[200]" side="bottom" align="start" avoidCollisions={true}>
-                            <p className="text-[10px] text-muted-foreground mb-1.5">Each line becomes a bullet point</p>
                             <Textarea
                             value={noteText}
                             onChange={(e) => setNoteText(e.target.value)}
-                            placeholder="Add notes about this contact…&#10;Each line = one bullet point"
-                            className="text-xs min-h-[80px] resize-none"
+                            onKeyDown={handleNoteKeyDown}
+                            placeholder="• Add notes about this contact…"
+                            className="text-xs min-h-[100px] resize-none"
                             autoFocus />
-
-                            {noteText &&
-                          <div className="mt-2 p-2 rounded-md bg-muted/40 border border-border/30">
-                                <p className="text-[10px] font-medium text-muted-foreground mb-1">Preview:</p>
-                                <ul className="space-y-0.5">
-                                  {noteText.split("\n").filter((l) => l.trim()).map((line, i) =>
-                              <li key={i} className="text-xs text-foreground flex items-start gap-1.5">
-                                      <span className="text-muted-foreground shrink-0">•</span>
-                                      <span>{line.trim()}</span>
-                                    </li>
-                              )}
-                                </ul>
-                              </div>
-                          }
                             <Button
                             size="sm"
                             className="mt-2 h-7 text-xs w-full"
@@ -593,7 +622,7 @@ const StakeholdersSection = ({ deal, queryClient }: {deal: Deal;queryClient: Ret
                         {editingNote !== s.id && (
                           <div className="flex items-center gap-0.5 shrink-0">
                             <button
-                              onClick={() => { setEditingNote(s.id); setNoteText(s.note || ""); }}
+                              onClick={() => { setEditingNote(s.id); setNoteText(formatWithBullets(s.note || "")); }}
                               className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
                               title="Edit note">
                               <Pencil className="h-3 w-3" />
@@ -614,7 +643,8 @@ const StakeholdersSection = ({ deal, queryClient }: {deal: Deal;queryClient: Ret
                           <Textarea
                             value={noteText}
                             onChange={(e) => setNoteText(e.target.value)}
-                            className="min-h-[60px] text-xs"
+                            onKeyDown={handleNoteKeyDown}
+                            className="min-h-[80px] text-xs resize-none"
                             autoFocus
                           />
                           <div className="flex gap-1">
