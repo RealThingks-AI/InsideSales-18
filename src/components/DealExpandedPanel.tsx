@@ -315,6 +315,7 @@ const StakeholdersSection = ({ deal, queryClient }: {deal: Deal;queryClient: Ret
   const [noteText, setNoteText] = useState("");
   const [showNotesSummary, setShowNotesSummary] = useState(false);
   const [noteSearch, setNoteSearch] = useState("");
+  const [focusedNoteId, setFocusedNoteId] = useState<string | null>(null);
   // Confirmation dialog state for remove
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean;
@@ -446,7 +447,7 @@ const StakeholdersSection = ({ deal, queryClient }: {deal: Deal;queryClient: Ret
 
   // Notes summary data
   const stakeholdersWithNotes = useMemo(() => {
-    return stakeholders.filter((s) => s.note).map((s) => {
+    return stakeholders.filter((s) => s.note || s.id === editingNote).map((s) => {
       const roleDef = STAKEHOLDER_ROLES.find((r) => r.role === s.role);
       return { ...s, roleLabel: roleDef?.label || s.role, badgeBg: roleDef?.badgeBg || "", contactName: contactNames[s.contact_id] || "…" };
     }).filter((s) => {
@@ -454,7 +455,7 @@ const StakeholdersSection = ({ deal, queryClient }: {deal: Deal;queryClient: Ret
       const q = noteSearch.toLowerCase();
       return s.contactName.toLowerCase().includes(q) || (s.note || "").toLowerCase().includes(q) || s.roleLabel.toLowerCase().includes(q);
     });
-  }, [stakeholders, contactNames, noteSearch]);
+  }, [stakeholders, contactNames, noteSearch, editingNote]);
 
   return (
     <>
@@ -470,7 +471,7 @@ const StakeholdersSection = ({ deal, queryClient }: {deal: Deal;queryClient: Ret
               variant="ghost"
               size="sm"
               className={cn("h-6 px-2 text-[10px] gap-1", showNotesSummary && "bg-accent")}
-              onClick={() => {setShowNotesSummary(!showNotesSummary);setNoteSearch("");}}>
+              onClick={() => {setShowNotesSummary(!showNotesSummary);setNoteSearch("");setFocusedNoteId(null);}}>
 
             <FileText className="h-3.5 w-3.5" />
             Notes {stakeholders.filter((s) => s.note).length > 0 && `(${stakeholders.filter((s) => s.note).length})`}
@@ -540,6 +541,7 @@ const StakeholdersSection = ({ deal, queryClient }: {deal: Deal;queryClient: Ret
                           title={sh.note ? "View/Edit note" : "Add note"}
                           onClick={() => {
                             setShowNotesSummary(true);
+                            setFocusedNoteId(sh.id);
                             setEditingNote(sh.id);
                             setNoteText(formatWithBullets(sh.note || ""));
                           }}>
@@ -582,13 +584,17 @@ const StakeholdersSection = ({ deal, queryClient }: {deal: Deal;queryClient: Ret
 
 
 
-            {stakeholdersWithNotes.length === 0 ?
-            <p className="text-xs text-muted-foreground text-center py-2">
-                {stakeholders.filter((s) => s.note).length === 0 ? "No stakeholder notes yet." : "No matching notes."}
-              </p> :
+            {(() => {
+              const displayedNotes = focusedNoteId
+                ? stakeholdersWithNotes.filter(s => s.id === focusedNoteId)
+                : stakeholdersWithNotes;
+              return displayedNotes.length === 0 ?
+              <p className="text-xs text-muted-foreground text-center py-2">
+                  {stakeholders.filter((s) => s.note).length === 0 && !editingNote ? "No stakeholder notes yet." : "No matching notes."}
+                </p> :
 
-            <div className="space-y-2 max-h-[280px] overflow-y-auto">
-                {stakeholdersWithNotes.map((s) =>
+              <div className="space-y-2 max-h-[280px] overflow-y-auto">
+                  {displayedNotes.map((s) =>
               <div key={s.id} className="rounded-lg bg-muted/50 border border-border/40 p-2.5">
                     {/* Header row */}
                     <div className="flex items-center justify-between gap-2 border-b border-border/30 pb-1.5 mb-1.5">
@@ -627,10 +633,10 @@ const StakeholdersSection = ({ deal, queryClient }: {deal: Deal;queryClient: Ret
                           autoFocus
                         />
                         <div className="flex justify-end gap-1.5">
-                          <Button size="sm" variant="outline" className="h-7 text-xs px-3" onClick={() => setEditingNote(null)}>
+                          <Button size="sm" variant="outline" className="h-7 text-xs px-3" onClick={() => { setEditingNote(null); setFocusedNoteId(null); }}>
                             Cancel
                           </Button>
-                          <Button size="sm" className="h-7 text-xs px-3" onClick={() => handleSaveNote(s.id, noteText)}>
+                          <Button size="sm" className="h-7 text-xs px-3" onClick={() => { handleSaveNote(s.id, noteText); setFocusedNoteId(null); }}>
                             Save
                           </Button>
                         </div>
@@ -654,7 +660,7 @@ const StakeholdersSection = ({ deal, queryClient }: {deal: Deal;queryClient: Ret
                           size="sm"
                           variant="destructive"
                           className="h-6 text-[11px] px-2.5"
-                          onClick={() => { handleSaveNote(s.id, ""); setDeletingNoteId(null); }}>
+                          onClick={() => { handleSaveNote(s.id, ""); setDeletingNoteId(null); setFocusedNoteId(null); }}>
                           Yes
                         </Button>
                         <Button
@@ -668,8 +674,8 @@ const StakeholdersSection = ({ deal, queryClient }: {deal: Deal;queryClient: Ret
                     )}
               </div>
               )}
-              </div>
-            }
+              </div>;
+            })()}
           </div>
           }
       </div>
