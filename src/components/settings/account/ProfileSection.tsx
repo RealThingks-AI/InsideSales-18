@@ -283,7 +283,7 @@ const ProfileSection = ({ profile, setProfile, userId, displayPrefs, setDisplayP
                   <SelectItem value="deals">Deals</SelectItem>
                   <SelectItem value="contacts">Contacts</SelectItem>
                   <SelectItem value="accounts">Accounts</SelectItem>
-                  <SelectItem value="tasks">Tasks</SelectItem>
+                  <SelectItem value="tasks">Action Items</SelectItem>
                 </SelectContent>
               </Select>
             </div>

@@ -129,7 +129,6 @@ const LeadsTable = ({ columns, onColumnsChange }: LeadsTableProps) => {
             placeholder="Search leads..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            inputSize="control"
           />
         </div>
 
