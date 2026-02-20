@@ -1,45 +1,29 @@
 
-## Fix Duplicate Note Editor Issue
+
+## Remove Popover Editor -- Use Inline-Only Note Editing
 
 ### Problem
-The popover note editor (triggered by the info icon next to each stakeholder name) and the inline note editor (in the Notes Summary panel at the bottom) both use the same `editingNote` state. When the info icon is clicked, both editors activate simultaneously, creating the duplicate UI shown in the screenshot.
+The info icon still opens a Popover with a duplicate textarea and Save button (as shown in the screenshot). The user wants NO popover at all -- clicking the info icon should instead open the Notes Summary panel and trigger the inline editor there.
 
 ### Solution
-Separate the two editing contexts by introducing an `editingNoteSource` state that tracks WHERE the edit was initiated.
+1. **Remove the Popover wrapper** around the info icon (lines 534-570). Replace it with a plain button that:
+   - Opens the Notes Summary panel (`setShowNotesSummary(true)`)
+   - Sets the inline editing state (`setEditingNote(sh.id)`, `setEditingNoteSource('inline')`, `setNoteText(...)`)
+2. **Remove the `editingNoteSource` state entirely** since popover mode no longer exists -- simplify back to just `editingNote`.
+3. **Clean up all `editingNoteSource` references** throughout the file (guards, resets in save/cancel/delete handlers).
 
 ### Technical Details
 
 **File: `src/components/DealExpandedPanel.tsx`**
 
-1. **Add a source tracker state**
-   - Add `editingNoteSource` state: `'popover' | 'inline' | null`
-   - Set it to `'popover'` when the info icon popover opens (line 536)
-   - Set it to `'inline'` when the pencil icon in the notes summary is clicked (line 625)
-   - Reset to `null` when editing ends
+| Change | Details |
+|--------|---------|
+| Remove `editingNoteSource` state (line 314) | No longer needed |
+| Replace Popover block (lines 534-570) | Replace with a plain `<button>` that calls `setShowNotesSummary(true)`, `setEditingNote(sh.id)`, `setNoteText(formatWithBullets(sh.note))` |
+| Remove Popover/PopoverTrigger/PopoverContent imports if unused | Clean up imports |
+| Simplify inline editor guard (line 642) | Change from `editingNote === s.id && editingNoteSource === 'inline'` to just `editingNote === s.id` |
+| Simplify action icons guard (line 623) | Remove `editingNoteSource !== 'popover'` check |
+| Remove all `setEditingNoteSource(...)` calls | Lines 537-538, 626, 652, 655, 679 |
 
-2. **Guard the inline editor in notes summary (line 641)**
-   - Only show the inline textarea when `editingNoteSource === 'inline'`
-   - When source is `'popover'`, the notes summary continues to show the read-only bullet list
+The info icon button keeps its existing styling (highlighted when note exists, faded when empty). Clicking it now scrolls/opens the Notes panel and activates inline editing for that stakeholder.
 
-3. **Guard the popover editor (line 533)**
-   - Only allow the popover to open when `editingNoteSource` is null or `'popover'`
-   - When source is `'inline'`, clicking info icon should close the inline editor first
-
-4. **Update all state-setting locations**
-   - Popover `onOpenChange` (line 535): set source to `'popover'` on open, `null` on close
-   - Pencil button `onClick` (line 625): set source to `'inline'`
-   - Save/Cancel buttons in inline editor (lines 651-656): reset source to `null`
-   - Delete confirmation (line 678): reset source to `null`
-
-### Summary of Changes
-
-| What | Where | Change |
-|------|-------|--------|
-| New state | ~line 440 area | Add `editingNoteSource` state |
-| Popover onOpenChange | Line 535-538 | Set source to `'popover'` / `null` |
-| Pencil button onClick | Line 625 | Set source to `'inline'` |
-| Inline editor guard | Line 641 | Add `editingNoteSource === 'inline'` condition |
-| Edit action icons guard | Line 622 | Add `editingNoteSource !== 'popover'` check |
-| Save/Cancel/Delete handlers | Lines 651-688 | Reset source to `null` |
-
-Only one file is modified: `src/components/DealExpandedPanel.tsx`
