@@ -1,57 +1,52 @@
 
 
-## Add Edit and Delete Actions to Stakeholder Notes
+## Replace Textarea + Preview with Bullet-Point Editor
 
 ### What Changes
-When the Notes section is expanded in the Deal Expanded Panel, each note will get action buttons (Edit and Delete) so users can manage notes directly from the summary view.
-
-### Current Behavior
-- Notes are displayed as read-only bullet lists under each stakeholder
-- To edit a note, users must go through the stakeholder info icon
-- No way to delete a note from the summary view
+Remove the dual textarea + preview pattern in both the popover note editor and the inline note editor. Replace with a single smart textarea that automatically manages bullet points.
 
 ### New Behavior
-- Each note card will show a small actions menu (three-dot dropdown) on hover or always visible
-- **Edit**: Opens an inline textarea to edit the note, with Save/Cancel buttons
-- **Delete**: Shows a confirmation prompt, then clears the note from the stakeholder record
+- When the textarea is shown, each line is automatically prefixed with a bullet character ("• ")
+- Pressing **Enter** creates a new line with "• " auto-inserted
+- Pressing **Backspace** on an empty bullet line removes that line
+- No separate "Preview" section -- the textarea itself IS the formatted view
+- The helper text "Each line becomes a bullet point" is removed since the behavior is self-evident
 
 ### Technical Details
 
 **File: `src/components/DealExpandedPanel.tsx`**
 
-1. Add a `deletingNote` state to track which note is being deleted (for confirmation)
-2. Modify the notes summary panel (lines 580-597) to add action buttons to each note card:
+#### 1. Add a `handleNoteKeyDown` helper function
 
-```
-Each note card will change from:
-  [Badge] [Contact Name]
-  - bullet point 1
-  - bullet point 2
+Handles Enter and Backspace for auto-bullet behavior:
+- **Enter**: Prevent default, insert `\n• ` at cursor position
+- **Backspace**: If cursor is right after a `• ` on an otherwise empty line, remove that bullet line
 
-To:
-  [Badge] [Contact Name]          [Edit] [Delete]
-  - bullet point 1
-  - bullet point 2
+#### 2. Add a `formatWithBullets` helper function
 
-  -- OR when editing --
-  [Badge] [Contact Name]
-  [textarea with current note]
-  [Save] [Cancel]
-```
+When note text is loaded for editing, ensure every non-empty line starts with "• ". When saving, strip the "• " prefix so storage stays clean (plain text lines).
 
-3. When **Edit** is clicked:
-   - Set `editingNote` to that stakeholder's ID (reuse existing state)
-   - Show a textarea pre-filled with the current note
-   - Show Save/Cancel buttons
-   - On Save, call the existing `handleSaveNote` function
+#### 3. Update the Popover note editor (lines 510-539)
 
-4. When **Delete** is clicked:
-   - Show a small confirmation (inline or alert)
-   - On confirm, call `handleSaveNote(stakeholderId, "")` which sets note to null
+- Remove the Preview section (lines 519-531)
+- Remove the "Each line becomes a bullet point" helper text (line 511)
+- Add `onKeyDown={handleNoteKeyDown}` to the Textarea
+- On open, format existing text with bullets; on save, strip bullets before saving
 
-5. Import `DropdownMenu` components (or use simple icon buttons) for the actions:
-   - `Pencil` icon for Edit
-   - `Trash2` icon for Delete
+#### 4. Update the Inline note editor in the notes summary (lines 612-628)
 
-No database changes needed -- the existing `deal_stakeholders.note` column and `handleSaveNote` function handle everything.
+- Same changes: add `onKeyDown`, format with bullets on edit start, strip on save
+
+#### 5. Styling tweak
+
+- Give the textarea a slightly larger min-height (100px) since it now serves as both editor and preview
+- Use `font-family: inherit` to keep consistent styling with the bullet list display
+
+### Summary of Changes
+
+| Location | Change |
+|----------|--------|
+| Popover editor (line 510-539) | Remove preview section, add auto-bullet logic |
+| Inline editor (line 612-628) | Add auto-bullet logic |
+| New helper functions | `handleNoteKeyDown`, `formatWithBullets`, `stripBullets` |
 
