@@ -1,73 +1,91 @@
 
 
-## Fix: Info Icon Should Open Note Editor for Specific Contact Only
+## Fix Note Editor Bullet Point & Stakeholders Layout Issues
 
-### Root Cause
-Two issues found in `src/components/DealExpandedPanel.tsx`:
+### Issues Found
 
-1. **`stakeholdersWithNotes` filters out contacts without notes** (line 449: `stakeholders.filter((s) => s.note)`). When clicking the info icon on a contact that has no note yet, `editingNote` is set to that stakeholder's ID, but that stakeholder is excluded from the rendered list -- so nothing appears or the panel shows only other contacts' notes.
+1. **Bullet point moves when typing**: `autoFocus` on the Textarea (line 633) places the cursor at position 0 (before `"• "`), so typing inserts text before the bullet instead of after it.
 
-2. **All notes are shown at once** when the panel opens. The user expects that clicking the info/add button for a specific contact should show/edit only that contact's note, not display all stakeholder notes.
+2. **Notes panel lacks proper scrollbar**: The notes summary panel (line 580-679) has a `max-h-[280px]` on the inner div but the outer wrapper has no scroll constraint, so it still pushes content.
+
+3. **Stakeholders section grows unbounded**: The `StakeholdersSection` component has no max-height. When the Notes panel is open with many notes, it consumes all vertical space, squishing the Updates and Action Items sections to near-zero height.
 
 ### Changes (single file: `src/components/DealExpandedPanel.tsx`)
 
-**1. Include the actively-edited stakeholder in the filtered list (line 449)**
-Change the filter from:
+#### Fix 1: Bullet cursor positioning (line 628-634)
+
+Replace `autoFocus` on the Textarea with a `ref` callback that focuses the element AND places the cursor at the end of the text (after `"• "`):
+
+```tsx
+<Textarea
+  value={noteText}
+  onChange={(e) => setNoteText(e.target.value)}
+  onKeyDown={handleNoteKeyDown}
+  className="min-h-[100px] text-xs resize-none"
+  ref={(el) => {
+    if (el) {
+      el.focus();
+      const len = el.value.length;
+      el.selectionStart = len;
+      el.selectionEnd = len;
+    }
+  }}
+/>
 ```
-stakeholders.filter((s) => s.note)
+
+#### Fix 2: Constrain Stakeholders section height
+
+Wrap the StakeholdersSection output in a container with `max-h` and `overflow-y-auto` so it scrolls when content is large. Change the outer div (line 462) from:
+
+```tsx
+<div className="px-3 pt-1.5 pb-1">
 ```
+
 to:
-```
-stakeholders.filter((s) => s.note || s.id === editingNote)
-```
-Also add `editingNote` to the `useMemo` dependency array (line 457).
 
-**2. When info icon is clicked, show only that contact's note card**
-Instead of showing all notes when the summary panel opens from the info icon click, filter the displayed list to only the stakeholder being edited. This can be done by:
-- Adding a state like `focusedNoteId` (set when info icon is clicked, cleared when the panel is manually toggled via the "Notes" button).
-- When `focusedNoteId` is set, render only the matching stakeholder card instead of the full `stakeholdersWithNotes` list.
-- When the user clicks the "Notes (N)" toggle button at the top, clear `focusedNoteId` so all notes are shown as before.
-
-**3. Update the info icon click handler (line 541-544)**
-Set `focusedNoteId` alongside the existing state updates:
-```
-onClick={() => {
-  setShowNotesSummary(true);
-  setFocusedNoteId(sh.id);
-  setEditingNote(sh.id);
-  setNoteText(formatWithBullets(sh.note || ""));
-}}
+```tsx
+<div className="px-3 pt-1.5 pb-1 max-h-[45%] overflow-y-auto shrink-0">
 ```
 
-**4. Update the "Notes (N)" toggle button**
-When toggling the panel via the Notes button, clear `focusedNoteId` so all notes display:
-```
-onClick={() => {
-  setShowNotesSummary(!showNotesSummary);
-  setFocusedNoteId(null);
-}}
+However, since this is not inside a flex parent that uses percentage heights well, a better approach is to change the parent layout. The parent (line 1182) is:
+
+```tsx
+<div className="flex-1 min-h-0 flex flex-col overflow-hidden gap-1">
 ```
 
-**5. Filter the rendered list based on focus**
-In the rendering section (line 591), use a computed list:
-```
-const displayedNotes = focusedNoteId
-  ? stakeholdersWithNotes.filter(s => s.id === focusedNoteId)
-  : stakeholdersWithNotes;
-```
-Then map over `displayedNotes` instead of `stakeholdersWithNotes`.
+The fix: Make the StakeholdersSection a flex item that can shrink, and give it a max-height so it doesn't dominate. Change line 1184 from:
 
-**6. Clear focusedNoteId on save/cancel/delete**
-Reset `focusedNoteId` to `null` in the save handler, cancel button, and delete confirmation so the panel reverts to showing all notes after editing completes.
+```tsx
+<StakeholdersSection deal={deal} queryClient={queryClient} />
+```
+
+to wrap it in a constrained container:
+
+```tsx
+<div className="shrink-0 max-h-[40%] overflow-y-auto">
+  <StakeholdersSection deal={deal} queryClient={queryClient} />
+</div>
+```
+
+This ensures:
+- Stakeholders section gets at most 40% of the panel height
+- When content exceeds that, a scrollbar appears
+- Updates and Action Items always get their fair share of space
+
+#### Fix 3: Ensure notes panel scrolls properly
+
+The notes summary panel (line 596) already has `max-h-[280px] overflow-y-auto`, but when inside the constrained container from Fix 2, this works correctly. No additional change needed here -- the outer scroll from Fix 2 handles it.
 
 ### Summary
 
-| Change | Location | Purpose |
-|--------|----------|---------|
-| Include editing stakeholder in filter | Line 449 | Show card for contacts without existing notes |
-| Add `focusedNoteId` state | Near line 310 | Track which contact's note to isolate |
-| Set focus on info icon click | Line 541 | Isolate to clicked contact |
-| Clear focus on Notes toggle | Notes button onClick | Show all notes when toggled manually |
-| Filter displayed list | Line 591 | Render only focused contact or all |
-| Clear focus on save/cancel/delete | Various handlers | Return to full view after editing |
+| Change | Line(s) | Description |
+|--------|---------|-------------|
+| Replace `autoFocus` with ref callback | 628-634 | Cursor placed after bullet on open |
+| Wrap StakeholdersSection in scrollable container | 1184 | Max 40% height with scrollbar |
+
+### Technical Notes
+
+- The ref callback fires on every render, but since `el.focus()` is idempotent when already focused, this is harmless
+- The `max-h-[40%]` works because the parent has `flex-1 min-h-0` which resolves to an actual pixel height
+- Updates and Action Items sections keep their `flex-1 min-h-0` with `h-[220px]`, ensuring they share remaining space equally
 
