@@ -127,6 +127,18 @@ export function CampaignOutreachTab({ campaignId, initialTemplateId, onTemplateP
       return;
     }
 
+    // Process template placeholders
+    const processedSubject = sendForm.subject
+      .replace(/\{\{contact_name\}\}/gi, contact?.contacts?.contact_name || '')
+      .replace(/\{\{company_name\}\}/gi, contact?.contacts?.company_name || '')
+      .replace(/\{\{email\}\}/gi, contact?.contacts?.email || '')
+      .replace(/\{\{position\}\}/gi, contact?.contacts?.position || '');
+    const processedBody = sendForm.body
+      .replace(/\{\{contact_name\}\}/gi, contact?.contacts?.contact_name || '')
+      .replace(/\{\{company_name\}\}/gi, contact?.contacts?.company_name || '')
+      .replace(/\{\{email\}\}/gi, contact?.contacts?.email || '')
+      .replace(/\{\{position\}\}/gi, contact?.contacts?.position || '');
+
     setSending(true);
     try {
       const { data: sessionData } = await supabase.auth.getSession();
@@ -142,8 +154,8 @@ export function CampaignOutreachTab({ campaignId, initialTemplateId, onTemplateP
         body: JSON.stringify({
           recipientEmail,
           recipientName: contact?.contacts?.contact_name || '',
-          subject: sendForm.subject,
-          body: sendForm.body,
+          subject: processedSubject,
+          body: processedBody,
           contactId: sendForm.contact_id,
           accountId: sendForm.account_id || null,
           campaignId,
