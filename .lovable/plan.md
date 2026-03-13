@@ -1,145 +1,91 @@
 
 
-# Campaign Module Deep Audit -- Findings & Fix Plan
+## Fix Note Editor Bullet Point & Stakeholders Layout Issues
 
-## Audit Summary
+### Issues Found
 
-After thorough code review across all Campaign files, here is the status of each area and the fixes required.
+1. **Bullet point moves when typing**: `autoFocus` on the Textarea (line 633) places the cursor at position 0 (before `"• "`), so typing inserts text before the bullet instead of after it.
 
----
+2. **Notes panel lacks proper scrollbar**: The notes summary panel (line 580-679) has a `max-h-[280px]` on the inner div but the outer wrapper has no scroll constraint, so it still pushes content.
 
-## Section A -- What Is Implemented & Working
+3. **Stakeholders section grows unbounded**: The `StakeholdersSection` component has no max-height. When the Notes panel is open with many notes, it consumes all vertical space, squishing the Updates and Action Items sections to near-zero height.
 
-| Feature | Status |
-|---------|--------|
-| Campaign CRUD (create, edit, delete) | Working |
-| Campaign list with filters (search, status, type, owner) | Working |
-| Campaign detail panel with 9 tabs | Working |
-| Accounts tab (search, filter, bulk add, status tracking) | Working |
-| Contacts tab (search, filter by account/position, bulk add, stage tracking) | Working |
-| Outreach tab (log communication, send email via Graph API) | Working |
-| Email Templates (CRUD, audience segment, use in outreach) | Working |
-| Phone Scripts (CRUD, audience segment) | Working |
-| Materials tab (upload to storage, delete) | Working |
-| Action Items tab (CRUD, linked via module_type='campaigns') | Working |
-| Convert to Deal (creates deal at Lead stage, links stakeholder) | Working |
-| Analytics (stats, funnel chart, pie chart, summary) | Working |
-| Campaign Settings page (types, statuses, follow-up rules) | Working |
-| Campaign name required validation | Working |
-| Start date > end date validation | Working |
-| Owner defaults to current user | Working |
-| Status defaults to Draft | Working |
-| Aggregates (accounts, contacts, deals counts on list) | Working |
+### Changes (single file: `src/components/DealExpandedPanel.tsx`)
 
----
+#### Fix 1: Bullet cursor positioning (line 628-634)
 
-## Section B -- Critical Bug: Edge Function Auth
+Replace `autoFocus` on the Textarea with a `ref` callback that focuses the element AND places the cursor at the end of the text (after `"• "`):
 
-**File:** `supabase/functions/send-campaign-email/index.ts` (line 64)
-
-```typescript
-const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
+```tsx
+<Textarea
+  value={noteText}
+  onChange={(e) => setNoteText(e.target.value)}
+  onKeyDown={handleNoteKeyDown}
+  className="min-h-[100px] text-xs resize-none"
+  ref={(el) => {
+    if (el) {
+      el.focus();
+      const len = el.value.length;
+      el.selectionStart = len;
+      el.selectionEnd = len;
+    }
+  }}
+/>
 ```
 
-`getClaims()` is **not a standard method** in Supabase JS v2. This will fail at runtime when sending emails.
+#### Fix 2: Constrain Stakeholders section height
 
-**Fix:** Replace with `supabase.auth.getUser(token)`:
-```typescript
-const { data: userData, error: userError } = await supabase.auth.getUser(token);
-if (userError || !userData?.user) {
-  return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
-}
-const userId = userData.user.id;
+Wrap the StakeholdersSection output in a container with `max-h` and `overflow-y-auto` so it scrolls when content is large. Change the outer div (line 462) from:
+
+```tsx
+<div className="px-3 pt-1.5 pb-1">
 ```
 
----
+to:
 
-## Section C -- Issues Found (Bugs & Gaps)
-
-### 1. No Duplicate Prevention for Accounts/Contacts
-Adding the same account or contact twice to a campaign will cause a database error (no unique constraint check in UI). The hooks fire insert without checking if already exists.
-
-**Fix:** Add `unique(campaign_id, account_id)` constraint on `campaign_accounts` and `unique(campaign_id, contact_id)` on `campaign_contacts` via migration. Also add client-side toast if error occurs instead of generic error.
-
-### 2. No Campaign Archive Feature
-The audit document mentions "Archive campaign." There is no archive functionality -- only delete. The `campaigns` table has no `archived_at` column.
-
-**Fix:** Not critical for MVP. Skip unless user requests.
-
-### 3. Email Template Placeholders Not Implemented
-Templates are plain text. No `{{contact_name}}`, `{{company_name}}` variable substitution exists in the send flow.
-
-**Fix:** Add placeholder replacement in `handleSendEmail` in CampaignOutreachTab before sending:
-```typescript
-let processedBody = sendForm.body
-  .replace(/\{\{contact_name\}\}/gi, contact?.contacts?.contact_name || '')
-  .replace(/\{\{company_name\}\}/gi, contact?.contacts?.company_name || '')
-  .replace(/\{\{email\}\}/gi, contact?.contacts?.email || '');
+```tsx
+<div className="px-3 pt-1.5 pb-1 max-h-[45%] overflow-y-auto shrink-0">
 ```
-Also display supported placeholders in the template editor UI.
 
-### 4. No "Campaign Goal" Field
-The audit requests a "Campaign Goal" field. The DB and form have `message_strategy` and `target_audience` but no explicit `campaign_goal`.
+However, since this is not inside a flex parent that uses percentage heights well, a better approach is to change the parent layout. The parent (line 1182) is:
 
-**Fix:** The `message_strategy` field can serve this purpose. Rename the label to "Campaign Goal / Message Strategy" or add a new column. Will ask user preference.
+```tsx
+<div className="flex-1 min-h-0 flex flex-col overflow-hidden gap-1">
+```
 
-### 5. Materials Cannot Be Downloaded
-Materials are uploaded to private storage but there's no download button. Only delete exists.
+The fix: Make the StakeholdersSection a flex item that can shrink, and give it a max-height so it doesn't dominate. Change line 1184 from:
 
-**Fix:** Add a download button that generates a signed URL via `supabase.storage.from('campaign-materials').createSignedUrl(filePath, 3600)`.
+```tsx
+<StakeholdersSection deal={deal} queryClient={queryClient} />
+```
 
-### 6. No Cascade Delete for Campaign Sub-records
-The delete confirmation warns about associated data being deleted, but no ON DELETE CASCADE foreign keys exist on `campaign_accounts`, `campaign_contacts`, `campaign_communications`, `campaign_email_templates`, `campaign_phone_scripts`, `campaign_materials`. Deleting a campaign will leave orphan records.
+to wrap it in a constrained container:
 
-**Fix:** Add foreign key constraints with CASCADE via migration, or implement client-side cascade delete before the campaign delete call.
+```tsx
+<div className="shrink-0 max-h-[40%] overflow-y-auto">
+  <StakeholdersSection deal={deal} queryClient={queryClient} />
+</div>
+```
 
-### 7. Communication Tracking Not Shown in Contact/Account Activity
-Communications logged in campaigns are stored in `campaign_communications` but not surfaced in contact or account detail views elsewhere in the CRM.
+This ensures:
+- Stakeholders section gets at most 40% of the panel height
+- When content exceeds that, a scrollbar appears
+- Updates and Action Items always get their fair share of space
 
-**Fix:** This is a cross-module enhancement. Not critical for campaign module itself but should be noted for future work.
+#### Fix 3: Ensure notes panel scrolls properly
 
-### 8. No Pagination on Any Campaign Tab
-All tables load all records without pagination. With 1000+ contacts this will be slow.
+The notes summary panel (line 596) already has `max-h-[280px] overflow-y-auto`, but when inside the constrained container from Fix 2, this works correctly. No additional change needed here -- the outer scroll from Fix 2 handles it.
 
-**Fix:** Add pagination to contacts, accounts, and communications tabs using the existing `StandardPagination` component pattern.
+### Summary
 
----
+| Change | Line(s) | Description |
+|--------|---------|-------------|
+| Replace `autoFocus` with ref callback | 628-634 | Cursor placed after bullet on open |
+| Wrap StakeholdersSection in scrollable container | 1184 | Max 40% height with scrollbar |
 
-## Section D -- Implementation Plan (Priority Order)
+### Technical Notes
 
-### Phase 1: Critical Fixes (Must Do)
-
-1. **Fix edge function auth** -- Replace `getClaims` with `getUser` in `send-campaign-email/index.ts`
-2. **Add duplicate prevention** -- DB migration for unique constraints on `campaign_accounts(campaign_id, account_id)` and `campaign_contacts(campaign_id, contact_id)`
-3. **Add cascade delete** -- DB migration to add FK constraints with ON DELETE CASCADE from campaign sub-tables to `campaigns`
-4. **Add template placeholder support** -- Process `{{contact_name}}`, `{{company_name}}`, `{{email}}` in outreach send flow + display helper text in template editor
-5. **Add material download** -- Add download button with signed URL generation
-
-### Phase 2: Improvements (Should Do)
-
-6. **Add pagination** to contacts, accounts, and communications tabs
-7. **Rename "Message Strategy" label** to clarify its purpose as campaign goal/strategy
-
-### Phase 3: Enhancements (Nice to Have -- skip unless requested)
-
-- Campaign archive
-- Campaign cloning
-- Region-specific templates
-- Engagement scoring
-- Follow-up automation
-- Campaign ROI calculation
-
----
-
-## Files to Modify
-
-| File | Changes |
-|------|---------|
-| `supabase/functions/send-campaign-email/index.ts` | Fix auth from getClaims to getUser |
-| New migration | Add unique constraints + FK cascades |
-| `src/components/campaigns/CampaignOutreachTab.tsx` | Add placeholder substitution in send flow |
-| `src/components/campaigns/CampaignEmailTemplatesTab.tsx` | Show supported placeholder variables |
-| `src/components/campaigns/CampaignMaterialsTab.tsx` | Add download button |
-| `src/components/campaigns/CampaignContactsTab.tsx` | Add pagination |
-| `src/components/campaigns/CampaignAccountsTab.tsx` | Add pagination |
+- The ref callback fires on every render, but since `el.focus()` is idempotent when already focused, this is harmless
+- The `max-h-[40%]` works because the parent has `flex-1 min-h-0` which resolves to an actual pixel height
+- Updates and Action Items sections keep their `flex-1 min-h-0` with `h-[220px]`, ensuring they share remaining space equally
 

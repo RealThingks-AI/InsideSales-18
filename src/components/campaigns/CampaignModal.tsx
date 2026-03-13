@@ -176,8 +176,8 @@ export function CampaignModal({ open, onOpenChange, campaign }: Props) {
             <Textarea value={form.description} onChange={e => set('description', e.target.value)} rows={2} />
           </div>
           <div className="col-span-2">
-            <Label>Message Strategy</Label>
-            <Textarea value={form.message_strategy} onChange={e => set('message_strategy', e.target.value)} rows={3} placeholder="Describe the campaign messaging approach..." />
+            <Label>Campaign Goal / Message Strategy</Label>
+            <Textarea value={form.message_strategy} onChange={e => set('message_strategy', e.target.value)} rows={3} placeholder="Describe the campaign goal and messaging approach..." />
           </div>
         </div>
         <div className="flex justify-end gap-2 mt-4">

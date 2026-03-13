@@ -127,6 +127,18 @@ export function CampaignOutreachTab({ campaignId, initialTemplateId, onTemplateP
       return;
     }
 
+    // Process template placeholders
+    const processedSubject = sendForm.subject
+      .replace(/\{\{contact_name\}\}/gi, contact?.contacts?.contact_name || '')
+      .replace(/\{\{company_name\}\}/gi, contact?.contacts?.company_name || '')
+      .replace(/\{\{email\}\}/gi, contact?.contacts?.email || '')
+      .replace(/\{\{position\}\}/gi, contact?.contacts?.position || '');
+    const processedBody = sendForm.body
+      .replace(/\{\{contact_name\}\}/gi, contact?.contacts?.contact_name || '')
+      .replace(/\{\{company_name\}\}/gi, contact?.contacts?.company_name || '')
+      .replace(/\{\{email\}\}/gi, contact?.contacts?.email || '')
+      .replace(/\{\{position\}\}/gi, contact?.contacts?.position || '');
+
     setSending(true);
     try {
       const { data: sessionData } = await supabase.auth.getSession();
@@ -142,8 +154,8 @@ export function CampaignOutreachTab({ campaignId, initialTemplateId, onTemplateP
         body: JSON.stringify({
           recipientEmail,
           recipientName: contact?.contacts?.contact_name || '',
-          subject: sendForm.subject,
-          body: sendForm.body,
+          subject: processedSubject,
+          body: processedBody,
           contactId: sendForm.contact_id,
           accountId: sendForm.account_id || null,
           campaignId,
@@ -275,6 +287,9 @@ export function CampaignOutreachTab({ campaignId, initialTemplateId, onTemplateP
               <Label>Body *</Label>
               <Textarea value={sendForm.body} onChange={e => setSendForm(f => ({ ...f, body: e.target.value }))} rows={6} />
             </div>
+            <p className="text-xs text-muted-foreground">
+              Supported placeholders: <code className="bg-muted px-1 rounded">{'{{contact_name}}'}</code> <code className="bg-muted px-1 rounded">{'{{company_name}}'}</code> <code className="bg-muted px-1 rounded">{'{{email}}'}</code> <code className="bg-muted px-1 rounded">{'{{position}}'}</code>
+            </p>
           </div>
           <div className="flex justify-end gap-2 mt-3">
             <Button variant="outline" onClick={() => setSendOpen(false)}>Cancel</Button>
