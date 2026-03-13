@@ -10,10 +10,13 @@ import { Input } from '@/components/ui/input';
 import { Plus, X, Search } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { CAMPAIGN_ACCOUNT_STATUSES } from '@/types/campaign';
+import { StandardPagination } from '@/components/shared/StandardPagination';
 
 interface Props {
   campaignId: string;
 }
+
+const PAGE_SIZE = 25;
 
 export function CampaignAccountsTab({ campaignId }: Props) {
   const { query, addAccount, removeAccount, updateAccountStatus } = useCampaignAccounts(campaignId);
@@ -22,6 +25,7 @@ export function CampaignAccountsTab({ campaignId }: Props) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [industryFilter, setIndustryFilter] = useState('all');
   const [countryFilter, setCountryFilter] = useState('all');
+  const [currentPage, setCurrentPage] = useState(1);
 
   const allAccountsQuery = useQuery({
     queryKey: ['all_accounts_for_campaign'],
@@ -34,7 +38,6 @@ export function CampaignAccountsTab({ campaignId }: Props) {
 
   const existingIds = new Set((query.data || []).map(a => a.account_id));
 
-  // Extract unique filter values
   const { industries, countries } = useMemo(() => {
     const allAccounts = allAccountsQuery.data || [];
     const industries = [...new Set(allAccounts.map(a => a.industry).filter(Boolean))] as string[];
@@ -78,10 +81,14 @@ export function CampaignAccountsTab({ campaignId }: Props) {
     setCountryFilter('all');
   };
 
+  const allItems = query.data || [];
+  const totalPages = Math.ceil(allItems.length / PAGE_SIZE);
+  const paginatedItems = allItems.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
   return (
     <div className="p-4">
       <div className="flex items-center justify-between mb-3">
-        <span className="text-sm font-medium text-foreground">Target Accounts ({query.data?.length || 0})</span>
+        <span className="text-sm font-medium text-foreground">Target Accounts ({allItems.length})</span>
         <Popover open={addOpen} onOpenChange={(o) => { setAddOpen(o); if (!o) resetFilters(); }}>
           <PopoverTrigger asChild>
             <Button size="sm" variant="outline"><Plus className="h-3 w-3 mr-1" /> Add Accounts</Button>
@@ -139,42 +146,54 @@ export function CampaignAccountsTab({ campaignId }: Props) {
         </Popover>
       </div>
 
-      {!query.data?.length ? (
+      {!allItems.length ? (
         <p className="text-sm text-muted-foreground text-center py-8">No accounts added yet</p>
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Account</TableHead>
-              <TableHead>Industry</TableHead>
-              <TableHead>Country</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="w-10"></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {query.data.map(ca => (
-              <TableRow key={ca.id}>
-                <TableCell className="font-medium text-sm">{ca.accounts?.account_name || '—'}</TableCell>
-                <TableCell className="text-sm">{ca.accounts?.industry || '—'}</TableCell>
-                <TableCell className="text-sm">{ca.accounts?.country || '—'}</TableCell>
-                <TableCell>
-                  <Select value={ca.status} onValueChange={v => updateAccountStatus.mutate({ id: ca.id, status: v })}>
-                    <SelectTrigger className="h-7 text-xs w-[130px]"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {CAMPAIGN_ACCOUNT_STATUSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </TableCell>
-                <TableCell>
-                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeAccount.mutate(ca.id)}>
-                    <X className="h-3 w-3" />
-                  </Button>
-                </TableCell>
+        <>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Account</TableHead>
+                <TableHead>Industry</TableHead>
+                <TableHead>Country</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="w-10"></TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {paginatedItems.map(ca => (
+                <TableRow key={ca.id}>
+                  <TableCell className="font-medium text-sm">{ca.accounts?.account_name || '—'}</TableCell>
+                  <TableCell className="text-sm">{ca.accounts?.industry || '—'}</TableCell>
+                  <TableCell className="text-sm">{ca.accounts?.country || '—'}</TableCell>
+                  <TableCell>
+                    <Select value={ca.status} onValueChange={v => updateAccountStatus.mutate({ id: ca.id, status: v })}>
+                      <SelectTrigger className="h-7 text-xs w-[130px]"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {CAMPAIGN_ACCOUNT_STATUSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </TableCell>
+                  <TableCell>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeAccount.mutate(ca.id)}>
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          {totalPages > 1 && (
+            <StandardPagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              totalItems={allItems.length}
+              itemsPerPage={PAGE_SIZE}
+              onPageChange={setCurrentPage}
+              entityName="accounts"
+            />
+          )}
+        </>
       )}
     </div>
   );
