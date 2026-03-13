@@ -287,6 +287,9 @@ export function CampaignOutreachTab({ campaignId, initialTemplateId, onTemplateP
               <Label>Body *</Label>
               <Textarea value={sendForm.body} onChange={e => setSendForm(f => ({ ...f, body: e.target.value }))} rows={6} />
             </div>
+            <p className="text-xs text-muted-foreground">
+              Supported placeholders: <code className="bg-muted px-1 rounded">{'{{contact_name}}'}</code> <code className="bg-muted px-1 rounded">{'{{company_name}}'}</code> <code className="bg-muted px-1 rounded">{'{{email}}'}</code> <code className="bg-muted px-1 rounded">{'{{position}}'}</code>
+            </p>
           </div>
           <div className="flex justify-end gap-2 mt-3">
             <Button variant="outline" onClick={() => setSendOpen(false)}>Cancel</Button>

@@ -117,6 +117,9 @@ export function CampaignEmailTemplatesTab({ campaignId, onUseTemplate }: Props) 
             </div>
             <div><Label>Subject</Label><Input value={form.subject} onChange={e => set('subject', e.target.value)} /></div>
             <div><Label>Body</Label><Textarea value={form.body} onChange={e => set('body', e.target.value)} rows={6} /></div>
+            <p className="text-xs text-muted-foreground">
+              Supported placeholders: <code className="bg-muted px-1 rounded">{'{{contact_name}}'}</code> <code className="bg-muted px-1 rounded">{'{{company_name}}'}</code> <code className="bg-muted px-1 rounded">{'{{email}}'}</code> <code className="bg-muted px-1 rounded">{'{{position}}'}</code>
+            </p>
           </div>
           <div className="flex justify-end gap-2 mt-4">
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
