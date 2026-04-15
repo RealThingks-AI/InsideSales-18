@@ -6,6 +6,82 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+type SentEmailRecord = {
+  id: string;
+  campaign_id: string;
+  contact_id: string | null;
+  account_id: string | null;
+  conversation_id: string | null;
+  internet_message_id: string | null;
+  subject: string | null;
+  owner: string | null;
+  created_by: string | null;
+  communication_date: string | null;
+};
+
+type TrackableEmailRecord = SentEmailRecord & {
+  sender_mailbox: string;
+};
+
+async function loadSenderMaps(supabase: any, sentEmails: SentEmailRecord[]) {
+  const senderByMessageId = new Map<string, string>();
+  const internetMessageIds = [...new Set(sentEmails.map((email) => email.internet_message_id).filter(Boolean))] as string[];
+
+  if (internetMessageIds.length > 0) {
+    const { data: emailHistory, error } = await supabase
+      .from("email_history")
+      .select("internet_message_id, sender_email")
+      .in("internet_message_id", internetMessageIds);
+
+    if (error) {
+      console.error("Failed to load sender emails from email_history:", error);
+    } else {
+      for (const record of emailHistory || []) {
+        const messageId = record.internet_message_id?.trim();
+        const senderEmail = record.sender_email?.trim().toLowerCase();
+        if (messageId && senderEmail) {
+          senderByMessageId.set(messageId, senderEmail);
+        }
+      }
+    }
+  }
+
+  const senderByOwnerId = new Map<string, string>();
+  const ownerIds = [...new Set(sentEmails.map((email) => email.owner).filter(Boolean))] as string[];
+
+  if (ownerIds.length > 0) {
+    const { data: profiles, error } = await supabase
+      .from("profiles")
+      .select('id, "Email ID"')
+      .in("id", ownerIds);
+
+    if (error) {
+      console.error("Failed to load sender emails from profiles:", error);
+    } else {
+      for (const profile of profiles || []) {
+        const senderEmail = profile?.["Email ID"]?.trim().toLowerCase();
+        if (profile?.id && senderEmail) {
+          senderByOwnerId.set(profile.id, senderEmail);
+        }
+      }
+    }
+  }
+
+  return { senderByMessageId, senderByOwnerId };
+}
+
+function resolveSenderMailbox(
+  email: SentEmailRecord,
+  senderByMessageId: Map<string, string>,
+  senderByOwnerId: Map<string, string>,
+  fallbackMailbox: string,
+) {
+  const senderFromHistory = email.internet_message_id ? senderByMessageId.get(email.internet_message_id) : undefined;
+  const senderFromOwner = email.owner ? senderByOwnerId.get(email.owner) : undefined;
+
+  return (senderFromHistory || senderFromOwner || fallbackMailbox).trim().toLowerCase();
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -37,7 +113,7 @@ Deno.serve(async (req) => {
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
     const { data: sentEmails, error: fetchErr } = await supabase
       .from("campaign_communications")
-      .select("id, campaign_id, contact_id, account_id, conversation_id, internet_message_id, subject, owner, created_by")
+      .select("id, campaign_id, contact_id, account_id, conversation_id, internet_message_id, subject, owner, created_by, communication_date")
       .eq("communication_type", "Email")
       .eq("sent_via", "azure")
       .not("conversation_id", "is", null)
@@ -57,19 +133,27 @@ Deno.serve(async (req) => {
       });
     }
 
+    const { senderByMessageId, senderByOwnerId } = await loadSenderMaps(supabase, sentEmails as SentEmailRecord[]);
+
+    const trackableEmails: TrackableEmailRecord[] = (sentEmails as SentEmailRecord[]).map((email) => ({
+      ...email,
+      sender_mailbox: resolveSenderMailbox(email, senderByMessageId, senderByOwnerId, azureConfig.senderEmail),
+    }));
+
     // Group by conversation_id to avoid duplicate checks
-    const conversationMap = new Map<string, typeof sentEmails>();
-    for (const email of sentEmails) {
+    const conversationMap = new Map<string, TrackableEmailRecord[]>();
+    for (const email of trackableEmails) {
       const convId = email.conversation_id!;
-      if (!conversationMap.has(convId)) {
-        conversationMap.set(convId, []);
+      const groupKey = `${email.sender_mailbox}::${convId}`;
+      if (!conversationMap.has(groupKey)) {
+        conversationMap.set(groupKey, []);
       }
-      conversationMap.get(convId)!.push(email);
+      conversationMap.get(groupKey)!.push(email);
     }
 
     // Get all known internet_message_ids to skip already-tracked messages
     const allInternetMsgIds = new Set(
-      sentEmails.map(e => e.internet_message_id).filter(Boolean)
+      trackableEmails.map((email) => email.internet_message_id).filter(Boolean)
     );
 
     // Also get all existing synced replies to avoid re-inserting
@@ -86,14 +170,17 @@ Deno.serve(async (req) => {
     let totalRepliesFound = 0;
     const processedConversations: string[] = [];
 
-    // Always poll the shared mailbox since that's where emails are sent from
-    const sharedMailbox = azureConfig.senderEmail;
-
-    for (const [convId, emails] of conversationMap.entries()) {
+    for (const [groupKey, emails] of conversationMap.entries()) {
       try {
-        // Query Graph for messages in this conversation from the shared mailbox inbox
+        const convId = emails[0]?.conversation_id;
+        const senderMailbox = emails[0]?.sender_mailbox || azureConfig.senderEmail;
+        if (!convId) {
+          continue;
+        }
+
+        // Query Graph for messages in this conversation from the sender's inbox
         const filter = encodeURIComponent(`conversationId eq '${convId}'`);
-        const graphUrl = `https://graph.microsoft.com/v1.0/users/${sharedMailbox}/mailFolders/inbox/messages?$filter=${filter}&$orderby=receivedDateTime desc&$top=20&$select=id,subject,from,receivedDateTime,internetMessageId,conversationId,bodyPreview`;
+        const graphUrl = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(senderMailbox)}/mailFolders/inbox/messages?$filter=${filter}&$orderby=receivedDateTime desc&$top=20&$select=id,subject,from,receivedDateTime,internetMessageId,conversationId,bodyPreview`;
 
         const graphResp = await fetch(graphUrl, {
           headers: { Authorization: `Bearer ${accessToken}` },
@@ -101,7 +188,7 @@ Deno.serve(async (req) => {
 
         if (!graphResp.ok) {
           const errText = await graphResp.text();
-          console.error(`Graph inbox query failed for ${sharedMailbox}, conv ${convId}: ${graphResp.status} ${errText}`);
+          console.error(`Graph inbox query failed for ${senderMailbox}, conv ${convId}: ${graphResp.status} ${errText}`);
           continue;
         }
 
@@ -121,7 +208,13 @@ Deno.serve(async (req) => {
           const fromName = msg.from?.emailAddress?.name || fromEmail;
           const receivedAt = msg.receivedDateTime || new Date().toISOString();
 
-          const originalEmail = emails[0];
+          if (fromEmail.toLowerCase() === senderMailbox) {
+            continue;
+          }
+
+          const originalEmail = [...emails].sort(
+            (a, b) => new Date(b.communication_date || 0).getTime() - new Date(a.communication_date || 0).getTime(),
+          )[0];
 
           const { error: insertErr } = await supabase
             .from("campaign_communications")
@@ -140,7 +233,7 @@ Deno.serve(async (req) => {
               parent_id: originalEmail.id,
               owner: originalEmail.owner,
               created_by: originalEmail.created_by,
-              notes: `Auto-synced reply from ${fromName} (${fromEmail})`,
+              notes: `Auto-synced reply from ${fromName} (${fromEmail}) to ${senderMailbox}`,
               communication_date: receivedAt,
             });
 
@@ -160,12 +253,18 @@ Deno.serve(async (req) => {
 
           // Update email_history reply fields
           if (originalEmail.internet_message_id) {
+            const { data: historyRow } = await supabase
+              .from("email_history")
+              .select("reply_count")
+              .eq("internet_message_id", originalEmail.internet_message_id)
+              .maybeSingle();
+
             await supabase
               .from("email_history")
               .update({
                 replied_at: receivedAt,
                 last_reply_at: receivedAt,
-                reply_count: 1,
+                reply_count: (historyRow?.reply_count || 0) + 1,
               })
               .eq("internet_message_id", originalEmail.internet_message_id);
           }
@@ -215,13 +314,13 @@ Deno.serve(async (req) => {
           }
         }
 
-        processedConversations.push(convId);
+        processedConversations.push(groupKey);
       } catch (convErr) {
-        console.error(`Error processing conversation ${convId}:`, convErr);
+        console.error(`Error processing conversation group ${groupKey}:`, convErr);
       }
     }
 
-    console.log(`Reply check complete: ${totalRepliesFound} new replies found across ${processedConversations.length} conversations`);
+    console.log(`Reply check complete: ${totalRepliesFound} new replies found across ${processedConversations.length} mailbox conversations`);
 
     return new Response(JSON.stringify({
       message: "Reply check complete",

@@ -32,6 +32,19 @@ function ensureHtmlBody(body: string): string {
   return body.replace(/\n/g, '<br>');
 }
 
+async function resolveSenderEmail(supabaseClient: any, user: { id: string; email?: string | null }) {
+  const { data: profile } = await supabaseClient
+    .from("profiles")
+    .select('full_name, "Email ID"')
+    .eq("id", user.id)
+    .maybeSingle();
+
+  const profileEmail = profile?.["Email ID"]?.trim();
+  const authEmail = user.email?.trim();
+
+  return profileEmail || authEmail || null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -80,9 +93,20 @@ Deno.serve(async (req) => {
       });
     }
 
+    const senderEmail = await resolveSenderEmail(supabaseClient, user);
+    if (!senderEmail) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: "Your user email is not configured. Please update your profile email before sending campaign emails.",
+        errorCode: "USER_EMAIL_NOT_CONFIGURED",
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const mailboxEmail = azureConfig.senderEmail;
-    const fromEmail = user.email || mailboxEmail;
-    console.log(`Sending email via mailbox: ${mailboxEmail}, from: ${fromEmail} (user: ${user.email})`);
+    console.log(`Sending campaign email from user mailbox: ${senderEmail} (shared mailbox configured: ${mailboxEmail})`);
 
     let accessToken: string;
     try {
@@ -115,7 +139,7 @@ Deno.serve(async (req) => {
         body: payload.body,
         recipient_email: payload.recipient_email,
         recipient_name: payload.recipient_name,
-        sender_email: fromEmail,
+        sender_email: senderEmail,
         sent_by: user.id,
         contact_id: payload.contact_id,
         account_id: payload.account_id || null,
@@ -135,20 +159,25 @@ Deno.serve(async (req) => {
 
     // If this is a reply, look up the parent's internet_message_id for threading
     let replyToInternetMessageId: string | undefined;
+    let fallbackConversationId: string | null = null;
     if (payload.parent_id) {
       // Use explicitly passed parent_internet_message_id first
       if (payload.parent_internet_message_id) {
         replyToInternetMessageId = payload.parent_internet_message_id;
-      } else {
-        // Look up from DB
-        const { data: parentComm } = await supabaseClient
-          .from("campaign_communications")
-          .select("internet_message_id")
-          .eq("id", payload.parent_id)
-          .single();
-        if (parentComm?.internet_message_id) {
+      }
+
+      const { data: parentComm } = await supabaseClient
+        .from("campaign_communications")
+        .select("internet_message_id, conversation_id")
+        .eq("id", payload.parent_id)
+        .single();
+
+      if (!replyToInternetMessageId && parentComm?.internet_message_id) {
           replyToInternetMessageId = parentComm.internet_message_id;
-        }
+      }
+
+      if (parentComm?.conversation_id) {
+        fallbackConversationId = parentComm.conversation_id;
       }
     }
 
@@ -161,15 +190,16 @@ Deno.serve(async (req) => {
       payload.recipient_name,
       payload.subject,
       htmlBody,
-      fromEmail,
+      senderEmail,
       replyToInternetMessageId,
     );
 
     const deliveryStatus = result.success ? "sent" : "failed";
     const messageId = result.internetMessageId || crypto.randomUUID();
-    const threadId = payload.thread_id || null;
+    const threadId = payload.thread_id || payload.parent_id || null;
     const parentId = payload.parent_id || null;
-    const actualSender = result.sentAsUser ? fromEmail : mailboxEmail;
+    const conversationId = result.conversationId || fallbackConversationId;
+    const actualSender = senderEmail;
 
     const { data: commRecord, error: commError } = await supabaseClient
       .from("campaign_communications")
@@ -189,7 +219,7 @@ Deno.serve(async (req) => {
         parent_id: parentId,
         graph_message_id: result.graphMessageId || null,
         internet_message_id: result.internetMessageId || null,
-        conversation_id: result.conversationId || null,
+        conversation_id: conversationId,
         owner: user.id,
         created_by: user.id,
         notes: result.error ? `Send error: ${result.error.substring(0, 500)}` : null,
@@ -222,7 +252,7 @@ Deno.serve(async (req) => {
         delivery_status: deliveryStatus,
         communication_id: commRecord?.id,
         message_id: messageId,
-        conversation_id: result.conversationId || null,
+        conversation_id: conversationId,
         sent_as: actualSender,
         error: result.error || undefined,
         errorCode: result.errorCode || undefined,
