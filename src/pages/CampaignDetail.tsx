@@ -287,6 +287,47 @@ export default function CampaignDetail() {
       </div>
 
       <CampaignModal open={editOpen} onClose={() => setEditOpen(false)} campaign={campaign} isMARTComplete={isFullyMARTComplete} />
+
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Campaign</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete "{campaign.campaign_name}" and all associated accounts, contacts, communications, templates, and materials. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                deleteCampaign.mutate(campaign.id, { onSuccess: () => navigate("/campaigns") });
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={archiveOpen} onOpenChange={setArchiveOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Archive Campaign</AlertDialogTitle>
+            <AlertDialogDescription>
+              This campaign will be moved to the archive. You can restore it later from the campaigns list.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => {
+              archiveCampaign.mutate(campaign.id, { onSuccess: () => navigate("/campaigns") });
+            }}>
+              Archive
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
