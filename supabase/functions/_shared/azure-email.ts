@@ -137,7 +137,7 @@ export async function sendEmailViaGraph(
   }
 
   // If we got here with from still set, user email was used
-  sentAsUser = wantFrom && (message.from !== undefined);
+  sentAsUser = !!(wantFrom && message.from !== undefined);
 
   // sendMail returns 202 with empty body — consume it
   await sendResp.text();
@@ -190,9 +190,9 @@ export async function sendEmailViaGraph(
 
   return {
     success: true,
-    graphMessageId,
-    internetMessageId,
-    conversationId,
+    graphMessageId: graphMessageId ?? undefined,
+    internetMessageId: internetMessageId ?? undefined,
+    conversationId: conversationId ?? undefined,
     sentAsUser,
   };
 }
