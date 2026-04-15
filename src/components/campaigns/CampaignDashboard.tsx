@@ -415,7 +415,13 @@ export function CampaignDashboard({ campaigns, getMartProgress }: CampaignDashbo
                         <TableCell>
                           <Badge className={`text-[10px] ${STATUS_BADGE[c.status || "Draft"]}`} variant="secondary">{c.status || "Draft"}</Badge>
                         </TableCell>
-                        <TableCell><span className="text-xs">{mart.count}/{mart.total}</span></TableCell>
+                        <TableCell>
+                          {(() => {
+                            const martPct = mart.total > 0 ? (mart.count / mart.total) * 100 : 0;
+                            const mc = martPct === 100 ? "text-emerald-600 dark:text-emerald-400 font-medium" : martPct > 0 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground";
+                            return <span className={`text-xs ${mc}`}>{mart.count}/{mart.total}</span>;
+                          })()}
+                        </TableCell>
                         <TableCell className="text-xs text-right tabular-nums">{acc}</TableCell>
                         <TableCell className="text-xs text-right tabular-nums">{con}</TableCell>
                         <TableCell className="text-xs text-right tabular-nums">{com}</TableCell>
