@@ -222,7 +222,7 @@ export function CampaignDashboard({ campaigns, getMartProgress }: CampaignDashbo
                 <s.icon className={`h-4 w-4 ${s.color} shrink-0`} />
               </div>
               <div>
-                <p className="text-2xl font-bold leading-none">{s.value}</p>
+                <p className={`text-2xl font-bold leading-none ${STAT_VALUE_COLORS[s.label] || ""}`}>{s.value}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">{s.label}</p>
               </div>
             </CardContent>
@@ -277,7 +277,7 @@ export function CampaignDashboard({ campaigns, getMartProgress }: CampaignDashbo
                   <RechartsTooltip formatter={(value: number) => [`${value} campaigns`]} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
                   <Bar dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={40}>
                     {barData.map((entry, i) => (
-                      <Cell key={i} fill="hsl(var(--primary))" opacity={typeFilter && typeFilter !== entry.name ? 0.3 : 0.85} />
+                      <Cell key={i} fill={TYPE_COLORS[entry.name] || "hsl(var(--primary))"} opacity={typeFilter && typeFilter !== entry.name ? 0.3 : 0.9} />
                     ))}
                   </Bar>
                 </BarChart>
