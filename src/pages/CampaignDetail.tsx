@@ -58,11 +58,13 @@ export default function CampaignDetail() {
   }, [extractedId, isDirectUUID, rawId, campaigns]);
 
   const detail = useCampaignDetail(id);
-  const { updateCampaign } = useCampaigns();
+  const { updateCampaign, deleteCampaign, archiveCampaign, cloneCampaign } = useCampaigns();
   const ownerIds = useMemo(() => [detail.campaign?.owner].filter(Boolean) as string[], [detail.campaign?.owner]);
   const { displayNames } = useUserDisplayNames(ownerIds);
   const [editOpen, setEditOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("overview");
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
   const autoCompleteRef = useRef(false);
 
   // Auto-complete campaign when end date is reached (only if Active)
