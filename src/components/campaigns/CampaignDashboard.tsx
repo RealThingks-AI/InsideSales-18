@@ -41,18 +41,45 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 const STATUS_BADGE: Record<string, string> = {
-  Draft: "bg-muted text-muted-foreground",
-  Active: "bg-primary/10 text-primary",
-  Paused: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
-  Completed: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
+  Draft: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
+  Active: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
+  Paused: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
+  Completed: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
 };
 
 const STAT_BORDER_COLORS: Record<string, string> = {
-  Total: "border-l-primary",
-  Active: "border-l-green-500",
-  Draft: "border-l-muted-foreground",
+  Total: "border-l-indigo-500",
+  Active: "border-l-emerald-500",
+  Draft: "border-l-slate-400",
   Completed: "border-l-blue-500",
-  Paused: "border-l-yellow-500",
+  Paused: "border-l-amber-500",
+};
+
+const STAT_ICON_BG: Record<string, string> = {
+  Total: "bg-indigo-100 dark:bg-indigo-900/30",
+  Active: "bg-emerald-100 dark:bg-emerald-900/30",
+  Draft: "bg-slate-100 dark:bg-slate-800",
+  Completed: "bg-blue-100 dark:bg-blue-900/30",
+  Paused: "bg-amber-100 dark:bg-amber-900/30",
+};
+
+const STAT_VALUE_COLORS: Record<string, string> = {
+  Total: "text-indigo-600 dark:text-indigo-400",
+  Active: "text-emerald-600 dark:text-emerald-400",
+  Draft: "text-slate-600 dark:text-slate-400",
+  Completed: "text-blue-600 dark:text-blue-400",
+  Paused: "text-amber-600 dark:text-amber-400",
+};
+
+const TYPE_COLORS: Record<string, string> = {
+  "Cold Outreach": "hsl(220, 80%, 55%)",
+  "Email": "hsl(262, 60%, 55%)",
+  "Nurture": "hsl(142, 60%, 45%)",
+  "Phone + LinkedIn": "hsl(25, 85%, 55%)",
+  "Email + Phone": "hsl(340, 65%, 50%)",
+  "Re-engagement": "hsl(180, 55%, 45%)",
+  "Event": "hsl(45, 90%, 50%)",
+  "Product Launch": "hsl(290, 55%, 55%)",
 };
 
 const STAT_ICON_BG: Record<string, string> = {
