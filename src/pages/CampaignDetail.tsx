@@ -201,6 +201,15 @@ export default function CampaignDetail() {
             </Badge>
           )}
           <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>Edit</Button>
+          <Button variant="outline" size="sm" onClick={() => cloneCampaign.mutateAsync(campaign.id).then((newId) => { if (newId) { const slug = (campaign.campaign_name + " (Copy)").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""); navigate(`/campaigns/${slug}`); } })}>
+            <Copy className="h-3.5 w-3.5 mr-1" /> Clone
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setArchiveOpen(true)}>
+            <Archive className="h-3.5 w-3.5 mr-1" /> Archive
+          </Button>
+          <Button variant="destructive" size="sm" onClick={() => setDeleteOpen(true)}>
+            <Trash2 className="h-3.5 w-3.5 mr-1" /> Delete
+          </Button>
         </div>
       </div>
 
