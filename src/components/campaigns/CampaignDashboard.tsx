@@ -82,13 +82,6 @@ const TYPE_COLORS: Record<string, string> = {
   "Product Launch": "hsl(290, 55%, 55%)",
 };
 
-const STAT_ICON_BG: Record<string, string> = {
-  Total: "bg-primary/10",
-  Active: "bg-green-100 dark:bg-green-900/30",
-  Draft: "bg-muted",
-  Completed: "bg-blue-100 dark:bg-blue-900/30",
-  Paused: "bg-yellow-100 dark:bg-yellow-900/30",
-};
 
 interface AggregateData {
   accountsBycamp: Record<string, number>;
