@@ -56,6 +56,7 @@ export function CampaignCommunications({ campaignId, isCampaignEnded }: Props) {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [viewMode, setViewMode] = useState<"list" | "threads">("list");
   const [outreachTab, setOutreachTab] = useState<OutreachTab>("all");
+  const [syncingReplies, setSyncingReplies] = useState(false);
 
   const { data: communications = [], refetch } = useQuery({
     queryKey: ["campaign-communications", campaignId],
@@ -299,6 +300,36 @@ export function CampaignCommunications({ campaignId, isCampaignEnded }: Props) {
   const openReply = (msg: any) => {
     setReplyContext({ parent_id: msg.id, thread_id: msg.thread_id || msg.id, subject: msg.subject || "", contactId: msg.contact_id });
     setEmailComposeOpen(true);
+  };
+
+  const handleRefresh = async () => {
+    setSyncingReplies(true);
+
+    try {
+      const { data, error } = await supabase.functions.invoke("check-email-replies");
+      if (error) {
+        throw error;
+      }
+
+      queryClient.invalidateQueries({ queryKey: ["campaign-communications", campaignId] });
+      queryClient.invalidateQueries({ queryKey: ["campaign-contacts", campaignId] });
+      queryClient.invalidateQueries({ queryKey: ["campaign-accounts", campaignId] });
+      await refetch();
+
+      const repliesFound = data?.repliesFound ?? 0;
+      toast({
+        title: repliesFound > 0 ? "Replies synced" : "No new replies found",
+        description: repliesFound > 0 ? `${repliesFound} new reply${repliesFound === 1 ? "" : "ies"} detected.` : undefined,
+      });
+    } catch (err: any) {
+      toast({
+        title: "Reply sync failed",
+        description: err.message || "Unable to sync replies right now.",
+        variant: "destructive",
+      });
+    } finally {
+      setSyncingReplies(false);
+    }
   };
 
   const handleEmailSent = async (sentContactId?: string) => {
@@ -758,8 +789,9 @@ export function CampaignCommunications({ campaignId, isCampaignEnded }: Props) {
                 </TabsList>
               </Tabs>
             )}
-            <Button variant="outline" size="sm" onClick={() => refetch()}>
-              <RefreshCw className="h-3.5 w-3.5 mr-1" /> Refresh
+            <Button variant="outline" size="sm" onClick={handleRefresh} disabled={syncingReplies}>
+              <RefreshCw className={`h-3.5 w-3.5 mr-1 ${syncingReplies ? "animate-spin" : ""}`} />
+              {syncingReplies ? "Syncing..." : "Refresh"}
             </Button>
             {!isCampaignEnded && (
               <div className="flex gap-1.5">
