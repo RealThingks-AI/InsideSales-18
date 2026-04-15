@@ -338,6 +338,7 @@ export function CampaignDashboard({ campaigns, getMartProgress }: CampaignDashbo
             <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
               {martCampaigns.map((c) => {
                 const pct = c.mart.total > 0 ? (c.mart.count / c.mart.total) * 100 : 0;
+                const martColor = pct === 100 ? "text-emerald-600 dark:text-emerald-400" : pct > 0 ? "text-amber-600 dark:text-amber-400" : "text-slate-400";
                 return (
                   <div
                     key={c.id}
@@ -345,7 +346,7 @@ export function CampaignDashboard({ campaigns, getMartProgress }: CampaignDashbo
                     onClick={() => { const slug = c.campaign_name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""); navigate(`/campaigns/${slug}`); }}
                   >
                     <span className="text-xs truncate flex-1 min-w-0">{c.campaign_name}</span>
-                    <span className="text-[10px] text-muted-foreground shrink-0">{c.mart.count}/{c.mart.total}</span>
+                    <span className={`text-[10px] font-medium shrink-0 ${martColor}`}>{c.mart.count}/{c.mart.total}</span>
                     <Progress value={pct} className="w-14 h-1.5 shrink-0" />
                   </div>
                 );
