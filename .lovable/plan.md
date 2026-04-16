@@ -1,58 +1,45 @@
 
 
-## Fix: Email Reply Sync Not Working + Remove Manual Log Reply
+# Fix Plan: Account Table & Modal Improvements
 
-### Root Cause
+## Changes
 
-The edge function logs reveal the exact problem:
+### 1. Add Description Column to Account Table (AccountTable.tsx + AccountTableBody.tsx)
 
-```
-ERROR Graph inbox query failed for deepak.dongare@realthingks.com:
-400 {"error":{"code":"InefficientFilter","message":"The restriction or sort order is too complex for this operation."}}
-```
+**AccountTable.tsx (line 42):** Insert `description` column at order 1 (after account_name), shift all other orders up by 1. Also add `'description'` to `searchFields`.
 
-The `conversationId` property is **not a filterable field** in Microsoft Graph's `/messages` endpoint. The current code uses `$filter=conversationId eq '...'` which Graph rejects with `InefficientFilter`. This means **zero replies are ever detected**.
+**AccountTableBody.tsx:**
+- Add `description` field formatting in `formatCellValue` — render with `line-clamp-2` and `truncate` to prevent overflow
+- In table cell classes (line 277-285), add specific width rule for `description`: `min-w-[250px] max-w-[350px]`
+- Apply `table-fixed` layout with explicit column widths to prevent content overlap across ALL columns
+- For `linked_contacts` column header, center-align the label text to match the centered badge data
 
-### Fix Plan
+### 2. Fix Column Overflow / Alignment Issues (AccountTableBody.tsx)
 
-#### 1. Fix Graph API query in `check-email-replies/index.ts`
+- Add `overflow-hidden text-ellipsis` to all table cells to prevent text from bleeding into adjacent columns
+- Set `table-layout: fixed` on the Table element so column widths are enforced
+- Ensure `linked_contacts` header text is centered (currently uses left-aligned `<span>` but data is centered)
+- Set proper `min-width` values: account_name 200px, description 250px, linked 80px centered, others 100px
 
-Replace the broken `$filter=conversationId eq '...'` approach with a two-step strategy:
-- Fetch recent inbox messages (last 7 days) from the sender's mailbox **without** filtering by conversationId
-- Use `$filter=receivedDateTime ge {sevenDaysAgo}` which IS a supported filter
-- Match `conversationId` **in code** (server-side) against the set of conversation IDs we're tracking
-- Batch by sender mailbox (not by conversation) to minimize Graph API calls — one call per unique sender mailbox instead of one per conversation
+### 3. Rearrange Account Modal Fields (AccountModal.tsx)
 
-This is the standard workaround for Graph's `conversationId` filter limitation.
+Restructure the form layout from the current 2-column grid to specific rows:
 
-#### 2. Remove "Log Reply" button from `CampaignCommunications.tsx`
+- **Row 1:** Account Name + Industry (2-col grid)
+- **Row 2:** Description (full width textarea)
+- **Row 3:** Website + Phone (2-col grid)
+- **Row 4:** Region + Country (2-col grid) — country selection auto-updates region via existing `countryToRegion` mapping. The existing `countryRegionMapping.ts` already has 200+ countries and 7 regions with proper sync.
+- **Row 5:** Company Type + Currency + Status (3-col grid)
 
-Remove the manual "Log Reply" button (lines 488-534) since the user wants real-time auto-sync only. Keep the Reply button (for composing a reply email) and the Task button.
+### 4. Country/Region Filtering in Modal
 
-#### 3. Add auto-refresh polling
+Add filtered country list based on selected region. When user selects a region first, only show countries from that region. When country is selected, auto-fill region (already working).
 
-Add a `useEffect` interval that calls `check-email-replies` automatically every 60 seconds when the Outreach tab is active, so replies appear without manual refresh.
-
-### Files Modified
+## Files Modified
 
 | File | Change |
 |------|--------|
-| `supabase/functions/check-email-replies/index.ts` | Fix Graph query: fetch by date range, filter conversationId in code |
-| `src/components/campaigns/CampaignCommunications.tsx` | Remove "Log Reply" button, add 60s auto-poll for reply sync |
-
-### Technical Detail: New Graph Query
-
-```
-// Before (broken):
-/users/{mailbox}/mailFolders/inbox/messages?$filter=conversationId eq '{convId}'
-
-// After (working):
-/users/{mailbox}/mailFolders/inbox/messages
-  ?$filter=receivedDateTime ge {sevenDaysAgo}
-  &$orderby=receivedDateTime desc
-  &$top=50
-  &$select=id,subject,from,receivedDateTime,internetMessageId,conversationId,bodyPreview
-```
-
-Then in code: `inboxMessages.filter(msg => trackedConversationIds.has(msg.conversationId))`
+| `src/components/AccountTable.tsx` | Add description column to defaultColumns, add to searchFields |
+| `src/components/account-table/AccountTableBody.tsx` | Add description cell formatting, fix overflow with table-fixed layout, center Linked header |
+| `src/components/AccountModal.tsx` | Rearrange fields into 5 specific rows, add region-based country filtering |
 
