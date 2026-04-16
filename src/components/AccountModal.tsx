@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { countries, regions, countryToRegion } from "@/utils/countryRegionMapping";
+import { useMemo } from "react";
 
 const accountSchema = z.object({
   account_name: z.string().min(1, "Account name is required"),
@@ -107,11 +108,19 @@ export const AccountModal = ({ open, onOpenChange, account, onSuccess }: Account
 
   // Auto-update region when country changes
   const watchedCountry = form.watch("country");
+  const watchedRegion = form.watch("region");
+
   useEffect(() => {
     if (watchedCountry && countryToRegion[watchedCountry]) {
       form.setValue("region", countryToRegion[watchedCountry]);
     }
   }, [watchedCountry, form]);
+
+  // Filter countries based on selected region
+  const filteredCountries = useMemo(() => {
+    if (!watchedRegion) return countries;
+    return countries.filter(c => countryToRegion[c] === watchedRegion);
+  }, [watchedRegion]);
 
   const onSubmit = async (data: AccountFormData) => {
     try {
