@@ -82,6 +82,32 @@ function resolveSenderMailbox(
   return (senderFromHistory || senderFromOwner || fallbackMailbox).trim().toLowerCase();
 }
 
+async function fetchInboxMessages(accessToken: string, mailbox: string, sinceISO: string): Promise<any[]> {
+  const allMessages: any[] = [];
+  let nextLink: string | null = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(mailbox)}/mailFolders/inbox/messages?$filter=receivedDateTime ge ${sinceISO}&$orderby=receivedDateTime desc&$top=50&$select=id,subject,from,receivedDateTime,internetMessageId,conversationId,bodyPreview`;
+
+  while (nextLink) {
+    const resp = await fetch(nextLink, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (!resp.ok) {
+      const errText = await resp.text();
+      console.error(`Graph inbox fetch failed for ${mailbox}: ${resp.status} ${errText}`);
+      break;
+    }
+
+    const data = await resp.json();
+    const messages = data.value || [];
+    allMessages.push(...messages);
+
+    // Follow pagination but cap at 200 messages total
+    nextLink = allMessages.length < 200 ? (data["@odata.nextLink"] || null) : null;
+  }
+
+  return allMessages;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -140,15 +166,23 @@ Deno.serve(async (req) => {
       sender_mailbox: resolveSenderMailbox(email, senderByMessageId, senderByOwnerId, azureConfig.senderEmail),
     }));
 
-    // Group by conversation_id to avoid duplicate checks
-    const conversationMap = new Map<string, TrackableEmailRecord[]>();
+    // Build a set of tracked conversation IDs and group emails by conversationId
+    const convIdToEmails = new Map<string, TrackableEmailRecord[]>();
     for (const email of trackableEmails) {
       const convId = email.conversation_id!;
-      const groupKey = `${email.sender_mailbox}::${convId}`;
-      if (!conversationMap.has(groupKey)) {
-        conversationMap.set(groupKey, []);
+      if (!convIdToEmails.has(convId)) {
+        convIdToEmails.set(convId, []);
       }
-      conversationMap.get(groupKey)!.push(email);
+      convIdToEmails.get(convId)!.push(email);
+    }
+
+    // Group by unique sender mailbox to minimize Graph API calls
+    const mailboxToConvIds = new Map<string, Set<string>>();
+    for (const email of trackableEmails) {
+      if (!mailboxToConvIds.has(email.sender_mailbox)) {
+        mailboxToConvIds.set(email.sender_mailbox, new Set());
+      }
+      mailboxToConvIds.get(email.sender_mailbox)!.add(email.conversation_id!);
     }
 
     // Get all known internet_message_ids to skip already-tracked messages
@@ -164,57 +198,47 @@ Deno.serve(async (req) => {
       .not("internet_message_id", "is", null);
 
     const existingSyncedIds = new Set(
-      (existingSynced || []).map(e => e.internet_message_id).filter(Boolean)
+      (existingSynced || []).map((e: any) => e.internet_message_id).filter(Boolean)
     );
 
     let totalRepliesFound = 0;
-    const processedConversations: string[] = [];
+    const processedMailboxes: string[] = [];
 
-    for (const [groupKey, emails] of conversationMap.entries()) {
+    // Process one Graph API call per unique sender mailbox
+    for (const [mailbox, trackedConvIds] of mailboxToConvIds.entries()) {
       try {
-        const convId = emails[0]?.conversation_id;
-        const senderMailbox = emails[0]?.sender_mailbox || azureConfig.senderEmail;
-        if (!convId) {
-          continue;
-        }
+        console.log(`Fetching inbox for ${mailbox}, tracking ${trackedConvIds.size} conversations`);
 
-        // Query Graph for messages in this conversation from the sender's inbox
-        const filter = encodeURIComponent(`conversationId eq '${convId}'`);
-        const graphUrl = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(senderMailbox)}/mailFolders/inbox/messages?$filter=${filter}&$orderby=receivedDateTime desc&$top=20&$select=id,subject,from,receivedDateTime,internetMessageId,conversationId,bodyPreview`;
+        // Fetch recent inbox messages using date filter (NOT conversationId filter)
+        const inboxMessages = await fetchInboxMessages(accessToken, mailbox, sevenDaysAgo);
+        console.log(`Got ${inboxMessages.length} inbox messages for ${mailbox}`);
 
-        const graphResp = await fetch(graphUrl, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
+        // Filter in code: only messages whose conversationId matches our tracked set
+        const relevantMessages = inboxMessages.filter(
+          (msg: any) => msg.conversationId && trackedConvIds.has(msg.conversationId)
+        );
+        console.log(`${relevantMessages.length} messages match tracked conversations for ${mailbox}`);
 
-        if (!graphResp.ok) {
-          const errText = await graphResp.text();
-          console.error(`Graph inbox query failed for ${senderMailbox}, conv ${convId}: ${graphResp.status} ${errText}`);
-          continue;
-        }
-
-        const graphData = await graphResp.json();
-        const inboxMessages = graphData.value || [];
-
-        for (const msg of inboxMessages) {
+        for (const msg of relevantMessages) {
           const msgInternetId = msg.internetMessageId;
-
-          // Skip if we already know about this message
           if (!msgInternetId) continue;
           if (allInternetMsgIds.has(msgInternetId)) continue;
           if (existingSyncedIds.has(msgInternetId)) continue;
 
-          // This is a new reply!
           const fromEmail = msg.from?.emailAddress?.address || "";
           const fromName = msg.from?.emailAddress?.name || fromEmail;
           const receivedAt = msg.receivedDateTime || new Date().toISOString();
 
-          if (fromEmail.toLowerCase() === senderMailbox) {
-            continue;
-          }
+          // Skip messages sent by the mailbox owner (not a reply from external)
+          if (fromEmail.toLowerCase() === mailbox) continue;
 
-          const originalEmail = [...emails].sort(
+          // Find the original email(s) in this conversation
+          const convEmails = convIdToEmails.get(msg.conversationId) || [];
+          const originalEmail = [...convEmails].sort(
             (a, b) => new Date(b.communication_date || 0).getTime() - new Date(a.communication_date || 0).getTime(),
           )[0];
+
+          if (!originalEmail) continue;
 
           const { error: insertErr } = await supabase
             .from("campaign_communications")
@@ -229,21 +253,22 @@ Deno.serve(async (req) => {
               delivery_status: "received",
               sent_via: "graph-sync",
               internet_message_id: msgInternetId,
-              conversation_id: convId,
+              conversation_id: msg.conversationId,
               parent_id: originalEmail.id,
               owner: originalEmail.owner,
               created_by: originalEmail.created_by,
-              notes: `Auto-synced reply from ${fromName} (${fromEmail}) to ${senderMailbox}`,
+              notes: `Auto-synced reply from ${fromName} (${fromEmail}) to ${mailbox}`,
               communication_date: receivedAt,
             });
 
           if (insertErr) {
-            console.error(`Failed to insert reply for conv ${convId}:`, insertErr);
+            console.error(`Failed to insert reply for conv ${msg.conversationId}:`, insertErr);
             continue;
           }
 
           totalRepliesFound++;
           existingSyncedIds.add(msgInternetId);
+          allInternetMsgIds.add(msgInternetId);
 
           // Update original email's status to "Replied"
           await supabase
@@ -314,18 +339,18 @@ Deno.serve(async (req) => {
           }
         }
 
-        processedConversations.push(groupKey);
-      } catch (convErr) {
-        console.error(`Error processing conversation group ${groupKey}:`, convErr);
+        processedMailboxes.push(mailbox);
+      } catch (mbErr) {
+        console.error(`Error processing mailbox ${mailbox}:`, mbErr);
       }
     }
 
-    console.log(`Reply check complete: ${totalRepliesFound} new replies found across ${processedConversations.length} mailbox conversations`);
+    console.log(`Reply check complete: ${totalRepliesFound} new replies found across ${processedMailboxes.length} mailboxes`);
 
     return new Response(JSON.stringify({
       message: "Reply check complete",
       repliesFound: totalRepliesFound,
-      conversationsChecked: processedConversations.length,
+      mailboxesChecked: processedMailboxes.length,
     }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
