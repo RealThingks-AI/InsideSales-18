@@ -87,7 +87,7 @@ async function fetchInboxMessages(accessToken: string, mailbox: string, sinceISO
   let nextLink: string | null = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(mailbox)}/mailFolders/inbox/messages?$filter=receivedDateTime ge ${sinceISO}&$orderby=receivedDateTime desc&$top=50&$select=id,subject,from,receivedDateTime,internetMessageId,conversationId,bodyPreview`;
 
   while (nextLink) {
-    const resp = await fetch(nextLink, {
+    const resp: Response = await fetch(nextLink, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
 
@@ -97,7 +97,7 @@ async function fetchInboxMessages(accessToken: string, mailbox: string, sinceISO
       break;
     }
 
-    const data = await resp.json();
+    const data: any = await resp.json();
     const messages = data.value || [];
     allMessages.push(...messages);
 
